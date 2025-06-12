@@ -77,6 +77,8 @@ import el2_pkg::*;
    input logic dma_dccm_stall_any,                    // stall any load/store at decode
 
    input logic exu_div_wren,                          // nonblocking divide write enable to GPR.
+   input logic exu_fpu_wren,                          // FPU write enable to GPR
+   input logic exu_fpu_active,                        // non-block FPU is active
 
    input logic dec_tlu_i0_kill_writeb_wb,             // I0 is flushed, don't writeback any results to arch state
    input logic dec_tlu_flush_lower_wb,                // trap lower flush
@@ -151,6 +153,10 @@ import el2_pkg::*;
    output el2_div_pkt_t    div_p,                    // divide packet
    output logic [4:0]       div_waddr_wb,             // DIV write address to GPR
    output logic             dec_div_cancel,           // cancel the divide operation
+
+   output fp_pkt_t     fp_p,                          // FPU packet
+   output logic [4:0]  fpu_waddr_wb,                  // FPU write address to GPR
+   output logic        dec_fpu_cancel,                // Cancel the FPU operation
 
    output logic        dec_lsu_valid_raw_d,
    output logic [11:0] dec_lsu_offset_d,
@@ -246,6 +252,11 @@ import el2_pkg::*;
    logic               i0_div_prior_div_stall;
    logic               nonblock_div_cancel;
 
+   logic               fpu_e1_to_r;
+   logic               fpu_flush;
+   logic               i0_nonblock_fpu_stall;
+   logic               i0_fpu_prior_fpu_stall;
+
    logic               i0_legal;
    logic               shift_illegal;
    logic               illegal_inst_en;
@@ -258,6 +269,8 @@ import el2_pkg::*;
    logic               i0_rs2_depend_i0_x, i0_rs2_depend_i0_r;
 
    logic               i0_div_decode_d;
+   logic               i0_dp_fpu;
+   logic               i0_fpu_decode_d;
    logic               i0_load_block_d;
    logic [1:0]         i0_rs1_depth_d, i0_rs2_depth_d;
 
@@ -828,6 +841,11 @@ end : cam_array
    assign div_p.unsign   =  i0_dp.unsign;
    assign div_p.rem      =  i0_dp.rem;
 
+   // FPU
+   assign i0_dp_fpu = (i0_dp.fp_add | i0_dp.fp_mul | i0_dp.fp_div);
+   assign fp_p.fp_add = i0_dp.fp_add;
+   assign fp_p.fp_mul = i0_dp.fp_mul;
+   assign fp_p.fp_div = i0_dp.fp_div;
 
    assign mul_p.valid    =  mul_decode_d;
 
@@ -1042,6 +1060,7 @@ end : cam_array
    assign prior_inflight_eff = (i0_dp.div)  ?  prior_inflight_x  :  prior_inflight;
 
    assign i0_div_prior_div_stall = i0_dp.div & div_active;
+   assign i0_fpu_prior_fpu_stall = i0_dp_fpu & exu_fpu_active;
 
    // Raw block has everything excepts the stalls coming from the lsu
    assign i0_block_raw_d = (i0_dp.csr_read & prior_csr_write) |
@@ -1055,7 +1074,9 @@ end : cam_array
                             i0_nonblock_load_stall |
                             i0_load_block_d |
                             i0_nonblock_div_stall |
-                            i0_div_prior_div_stall;
+                            i0_div_prior_div_stall |
+                            i0_nonblock_fpu_stall |
+                            i0_fpu_prior_fpu_stall;
 
    assign i0_block_d    = i0_block_raw_d | i0_store_stall_d | i0_load_stall_d;
    assign i0_exublock_d = i0_block_raw_d;
@@ -1283,6 +1304,7 @@ end : cam_array
 
       dec_tlu_packet_r                 =  r_t_in;
       dec_tlu_packet_r.pmu_divide      =  r_d.i0div & r_d.i0valid;
+      // TODO add PMU support for FPU
 
    end
 
@@ -1305,6 +1327,7 @@ end : cam_array
    assign d_d.i0load                =  i0_dp.load  & i0_legal_decode_d;
    assign d_d.i0store               =  i0_dp.store & i0_legal_decode_d;
    assign d_d.i0div                 =  i0_dp.div   & i0_legal_decode_d;
+   assign d_d.i0fpu                 =  i0_dp_fpu   & i0_legal_decode_d;
 
 
    assign d_d.csrwen                =  dec_csr_wen_unq_d   & i0_legal_decode_d;
@@ -1362,7 +1385,7 @@ end : cam_array
    assign dec_i0_waddr_r[4:0]       =  r_d_in.i0rd[4:0];
 
    assign     i0_wen_r              =  r_d_in.i0v & ~dec_tlu_i0_kill_writeb_r;
-   assign dec_i0_wen_r              =  i0_wen_r   & ~r_d_in.i0div & ~i0_load_kill_wen_r;  // don't write a nonblock load 1st time down the pipe
+   assign dec_i0_wen_r              =  i0_wen_r   & ~r_d_in.i0div & ~r_d_in.i0fpu & ~i0_load_kill_wen_r;  // don't write a nonblock load 1st time down the pipe
    assign dec_i0_wdata_r[31:0]      =  i0_result_corr_r[31:0];
 
 
@@ -1396,6 +1419,28 @@ end : cam_array
 
    assign i0_div_decode_d            =  i0_legal_decode_d & i0_dp.div;
 
+
+   // FPU stuff
+   assign fpu_e1_to_r         = (x_d.i0fpu & x_d.i0valid) |
+                                (r_d.i0fpu & r_d.i0valid);
+
+   // nonblocking FPU scheme
+
+   assign i0_nonblock_fpu_stall  = (dec_i0_rs1_en_d & exu_fpu_active & (fpu_waddr_wb[4:0] == i0r.rs1[4:0])) |
+                                   (dec_i0_rs2_en_d & exu_fpu_active & (fpu_waddr_wb[4:0] == i0r.rs2[4:0]));
+
+   assign fpu_flush              = (x_d.i0fpu & x_d.i0valid & (x_d.i0rd[4:0]==5'b0)                           ) |
+                                   (x_d.i0fpu & x_d.i0valid & dec_tlu_flush_lower_r                           ) |
+                                   (r_d.i0fpu & r_d.i0valid & dec_tlu_flush_lower_r & dec_tlu_i0_kill_writeb_r);
+
+   // cancel if any younger inst committing this cycle to same dest as nonblock FPU
+   assign dec_fpu_cancel         = (exu_fpu_active &  fpu_flush) |
+                                   (exu_fpu_active & ~fpu_e1_to_r & (r_d.i0rd[4:0] == fpu_waddr_wb[4:0]) & i0_wen_r);
+
+
+   assign i0_fpu_decode_d        =  i0_legal_decode_d & i0_dp_fpu;
+
+
 // for load_to_use_plus1, the load result data is merged in R stage instead of D
 
    if ( pt.LOAD_TO_USE_PLUS1 == 1 ) begin : genblock1
@@ -1426,8 +1471,11 @@ end : cam_array
 
    assign trace_enable = ~dec_tlu_trace_disable;
 
-
+   // latch divider writeback address
    rvdffe #(.WIDTH(5),.OVERRIDE(1))  i0rdff  (.*, .en(i0_div_decode_d),        .din(i0r.rd[4:0]),             .dout(div_waddr_wb[4:0]));
+
+   // latch FPU writeback address
+   rvdffe #(.WIDTH(5),.OVERRIDE(1))  i0rdff  (.*, .en(i0_fpu_decode_d),        .din(i0r.rd[4:0]),             .dout(fpu_waddr_wb[4:0]));
 
    rvdffe #(32) i0xinstff            (.*, .en(i0_x_data_en & trace_enable),    .din(i0_inst_d[31:0]),         .dout(i0_inst_x[31:0]));
    rvdffe #(32) i0cinstff            (.*, .en(i0_r_data_en & trace_enable),    .din(i0_inst_x[31:0]),         .dout(i0_inst_r[31:0]));
@@ -1520,28 +1568,30 @@ import el2_pkg::*;
    assign i[31:0] = inst[31:0];
 
 assign out.alu = (i[30]&i[24]&i[23]&!i[22]&!i[21]&!i[20]&i[14]&!i[5]&i[4]) | (i[30]
-    &!i[27]&!i[24]&i[4]) | (!i[30]&!i[25]&i[13]&i[12]) | (!i[29]&!i[27]
-    &!i[5]&i[4]) | (i[27]&i[25]&i[14]&i[4]) | (!i[29]&!i[25]&!i[13]&!i[12]
-    &i[4]) | (i[29]&i[27]&!i[14]&i[12]&i[4]) | (!i[27]&i[14]&!i[5]&i[4]) | (
-    i[30]&!i[29]&!i[13]&i[4]) | (!i[27]&!i[25]&i[5]&i[4]) | (i[13]&!i[5]
-    &i[4]) | (i[2]) | (i[6]) | (!i[30]&i[29]&!i[24]&!i[23]&i[22]&i[21]
-    &i[20]&!i[5]&i[4]) | (!i[12]&!i[5]&i[4]);
+    &!i[27]&!i[24]&i[4]) | (!i[30]&!i[25]&i[13]&i[12]&i[5]) | (!i[27]
+    &!i[25]&i[5]&i[4]) | (i[27]&i[25]&i[14]&i[4]) | (i[29]&i[27]&!i[14]
+    &i[12]&i[4]) | (i[30]&!i[29]&!i[13]&i[4]) | (!i[29]&!i[25]&!i[13]
+    &!i[12]&i[5]&i[4]) | (!i[30]&!i[27]&!i[25]&!i[6]&i[4]) | (!i[27]
+    &!i[25]&i[14]&!i[6]&i[4]) | (i[13]&!i[6]&!i[5]&i[4]) | (!i[12]&!i[6]
+    &!i[5]&i[4]) | (i[6]&i[5]) | (i[2]) | (!i[30]&i[29]&!i[24]&!i[23]
+    &i[22]&i[21]&i[20]&!i[5]&i[4]);
 
-assign out.rs1 = (!i[13]&i[11]&!i[2]) | (!i[13]&i[10]&!i[2]) | (i[19]&i[13]&!i[2]) | (
-    !i[13]&i[9]&!i[2]) | (i[18]&i[13]&!i[2]) | (!i[13]&i[8]&!i[2]) | (
-    i[17]&i[13]&!i[2]) | (!i[13]&i[7]&!i[2]) | (i[16]&i[13]&!i[2]) | (
-    i[15]&i[13]&!i[2]) | (!i[4]&!i[2]) | (!i[14]&!i[13]&i[6]&!i[3]) | (
-    !i[6]&!i[2]);
+assign out.rs1 = (!i[13]&i[11]&!i[2]) | (!i[5]&!i[2]) | (!i[13]&i[10]&!i[2]) | (
+    i[19]&i[13]&!i[2]) | (!i[13]&i[9]&!i[2]) | (i[18]&i[13]&!i[2]) | (
+    !i[13]&i[8]&!i[2]) | (i[17]&i[13]&!i[2]) | (!i[13]&i[7]&!i[2]) | (
+    i[16]&i[13]&!i[2]) | (i[15]&i[13]&!i[2]) | (!i[4]&!i[2]) | (!i[14]
+    &!i[13]&i[6]&!i[3]) | (!i[6]&!i[2]);
 
-assign out.rs2 = (i[5]&!i[4]&!i[2]) | (!i[6]&i[5]&!i[2]);
+assign out.rs2 = (i[5]&!i[4]&!i[2]) | (!i[6]&i[5]&!i[2]) | (i[6]&!i[5]);
 
-assign out.imm12 = (!i[4]&!i[3]&i[2]) | (i[13]&!i[5]&i[4]&!i[2]) | (!i[13]&!i[12]
-    &i[6]&i[4]) | (!i[12]&!i[5]&i[4]&!i[2]);
+assign out.imm12 = (!i[4]&!i[3]&i[2]) | (i[13]&!i[6]&!i[5]&i[4]&!i[2]) | (!i[13]
+    &!i[12]&i[6]&i[5]&i[4]) | (!i[12]&!i[6]&!i[5]&i[4]&!i[2]);
 
 assign out.rd = (!i[5]&!i[2]) | (i[5]&i[2]) | (i[4]);
 
-assign out.shimm5 = (!i[29]&!i[13]&i[12]&!i[5]&i[4]&!i[2]) | (i[27]&!i[13]&i[12]
-    &!i[5]&i[4]&!i[2]) | (i[14]&!i[13]&i[12]&!i[5]&i[4]&!i[2]);
+assign out.shimm5 = (!i[29]&!i[13]&i[12]&!i[6]&!i[5]&i[4]&!i[2]) | (i[27]&!i[13]
+    &i[12]&!i[6]&!i[5]&i[4]&!i[2]) | (i[14]&!i[13]&i[12]&!i[6]&!i[5]&i[4]
+    &!i[2]);
 
 assign out.imm20 = (i[5]&i[3]) | (i[4]&i[2]);
 
@@ -1553,22 +1603,22 @@ assign out.store = (!i[6]&i[5]&!i[4]);
 
 assign out.lsu = (!i[6]&!i[4]&!i[2]);
 
-assign out.add = (!i[14]&!i[13]&!i[12]&!i[5]&i[4]) | (!i[5]&!i[3]&i[2]) | (!i[30]
-    &!i[25]&!i[14]&!i[13]&!i[12]&!i[6]&i[4]&!i[2]);
+assign out.add = (!i[14]&!i[13]&!i[12]&!i[6]&!i[5]&i[4]) | (!i[5]&!i[3]&i[2]) | (
+    !i[30]&!i[25]&!i[14]&!i[13]&!i[12]&!i[6]&i[4]&!i[2]);
 
-assign out.sub = (i[30]&!i[14]&!i[12]&!i[6]&i[5]&i[4]&!i[2]) | (!i[29]&!i[25]&!i[14]
-    &i[13]&!i[6]&i[4]&!i[2]) | (i[27]&i[25]&i[14]&!i[6]&i[5]&!i[2]) | (
-    !i[14]&i[13]&!i[5]&i[4]&!i[2]) | (i[6]&!i[4]&!i[2]);
+assign out.sub = (i[30]&!i[14]&!i[12]&!i[6]&i[5]&i[4]&!i[2]) | (!i[14]&i[13]&!i[6]
+    &!i[5]&i[4]&!i[2]) | (!i[29]&!i[25]&!i[14]&i[13]&!i[6]&i[4]&!i[2]) | (
+    i[27]&i[25]&i[14]&!i[6]&i[5]&!i[2]) | (i[6]&!i[4]&!i[2]);
 
-assign out.land = (!i[27]&!i[25]&i[14]&i[13]&i[12]&!i[6]&!i[2]) | (i[14]&i[13]&i[12]
-    &!i[5]&!i[2]);
+assign out.land = (i[14]&i[13]&i[12]&!i[6]&!i[5]&!i[2]) | (!i[27]&!i[25]&i[14]&i[13]
+    &i[12]&!i[6]&!i[2]);
 
-assign out.lor = (!i[6]&i[3]) | (!i[29]&!i[27]&!i[25]&i[14]&i[13]&!i[12]&!i[6]&!i[2]) | (
-    i[5]&i[4]&i[2]) | (!i[13]&!i[12]&i[6]&i[4]) | (i[14]&i[13]&!i[12]
-    &!i[5]&!i[2]);
+assign out.lor = (!i[5]&i[3]) | (!i[29]&!i[27]&!i[25]&i[14]&i[13]&!i[12]&!i[6]&!i[2]) | (
+    i[14]&i[13]&!i[12]&!i[6]&!i[5]&!i[2]) | (i[5]&i[4]&i[2]) | (!i[13]
+    &!i[12]&i[6]&i[5]&i[4]);
 
-assign out.lxor = (!i[29]&!i[27]&!i[25]&i[14]&!i[13]&!i[12]&i[4]&!i[2]) | (i[14]
-    &!i[13]&!i[12]&!i[5]&i[4]&!i[2]);
+assign out.lxor = (!i[29]&!i[27]&!i[25]&i[14]&!i[13]&!i[12]&i[5]&i[4]&!i[2]) | (
+    i[14]&!i[13]&!i[12]&!i[6]&!i[5]&i[4]&!i[2]);
 
 assign out.sll = (!i[29]&!i[27]&!i[25]&!i[14]&!i[13]&i[12]&!i[6]&i[4]&!i[2]);
 
@@ -1576,10 +1626,10 @@ assign out.sra = (i[30]&!i[29]&!i[27]&!i[13]&i[12]&!i[6]&i[4]&!i[2]);
 
 assign out.srl = (!i[30]&!i[27]&!i[25]&i[14]&!i[13]&i[12]&!i[6]&i[4]&!i[2]);
 
-assign out.slt = (!i[29]&!i[25]&!i[14]&i[13]&!i[6]&i[4]&!i[2]) | (!i[14]&i[13]&!i[5]
-    &i[4]&!i[2]);
+assign out.slt = (!i[14]&i[13]&!i[6]&!i[5]&i[4]&!i[2]) | (!i[29]&!i[25]&!i[14]&i[13]
+    &!i[6]&i[4]&!i[2]);
 
-assign out.unsign = (!i[14]&i[13]&i[12]&!i[5]&!i[2]) | (i[13]&i[6]&!i[4]&!i[2]) | (
+assign out.unsign = (i[25]&!i[14]&i[13]&i[12]&!i[5]&!i[2]) | (i[13]&i[6]&!i[4]&!i[2]) | (
     i[14]&!i[5]&!i[4]) | (!i[25]&!i[14]&i[13]&i[12]&!i[6]&!i[2]) | (
     i[25]&i[14]&i[12]&!i[6]&i[5]&!i[2]);
 
@@ -1601,38 +1651,39 @@ assign out.half = (i[12]&!i[6]&!i[4]&!i[2]);
 
 assign out.word = (i[13]&!i[6]&!i[4]);
 
-assign out.csr_read = (i[13]&i[6]&i[4]) | (i[7]&i[6]&i[4]) | (i[8]&i[6]&i[4]) | (
-    i[9]&i[6]&i[4]) | (i[10]&i[6]&i[4]) | (i[11]&i[6]&i[4]);
+assign out.csr_read = (i[13]&i[6]&i[5]&i[4]) | (i[7]&i[6]&i[5]&i[4]) | (i[8]&i[6]
+    &i[5]&i[4]) | (i[9]&i[6]&i[5]&i[4]) | (i[10]&i[6]&i[5]&i[4]) | (
+    i[11]&i[6]&i[5]&i[4]);
 
-assign out.csr_clr = (i[15]&i[13]&i[12]&i[6]&i[4]) | (i[16]&i[13]&i[12]&i[6]&i[4]) | (
-    i[17]&i[13]&i[12]&i[6]&i[4]) | (i[18]&i[13]&i[12]&i[6]&i[4]) | (
-    i[19]&i[13]&i[12]&i[6]&i[4]);
+assign out.csr_clr = (i[15]&i[13]&i[12]&i[6]&i[5]&i[4]) | (i[16]&i[13]&i[12]&i[6]
+    &i[5]&i[4]) | (i[17]&i[13]&i[12]&i[6]&i[5]&i[4]) | (i[18]&i[13]&i[12]
+    &i[6]&i[5]&i[4]) | (i[19]&i[13]&i[12]&i[6]&i[5]&i[4]);
 
-assign out.csr_set = (i[15]&!i[12]&i[6]&i[4]) | (i[16]&!i[12]&i[6]&i[4]) | (i[17]
-    &!i[12]&i[6]&i[4]) | (i[18]&!i[12]&i[6]&i[4]) | (i[19]&!i[12]&i[6]
-    &i[4]);
+assign out.csr_set = (i[15]&!i[12]&i[6]&i[5]&i[4]) | (i[16]&!i[12]&i[6]&i[5]&i[4]) | (
+    i[17]&!i[12]&i[6]&i[5]&i[4]) | (i[18]&!i[12]&i[6]&i[5]&i[4]) | (
+    i[19]&!i[12]&i[6]&i[5]&i[4]);
 
-assign out.csr_write = (!i[13]&i[12]&i[6]&i[4]);
+assign out.csr_write = (!i[13]&i[12]&i[6]&i[5]&i[4]);
 
-assign out.csr_imm = (i[14]&!i[13]&i[6]&i[4]) | (i[15]&i[14]&i[6]&i[4]) | (i[16]
-    &i[14]&i[6]&i[4]) | (i[17]&i[14]&i[6]&i[4]) | (i[18]&i[14]&i[6]&i[4]) | (
-    i[19]&i[14]&i[6]&i[4]);
+assign out.csr_imm = (i[14]&!i[13]&i[6]&i[5]&i[4]) | (i[15]&i[14]&i[6]&i[5]&i[4]) | (
+    i[16]&i[14]&i[6]&i[5]&i[4]) | (i[17]&i[14]&i[6]&i[5]&i[4]) | (i[18]
+    &i[14]&i[6]&i[5]&i[4]) | (i[19]&i[14]&i[6]&i[5]&i[4]);
 
-assign out.presync = (!i[5]&i[3]) | (!i[13]&i[7]&i[6]&i[4]) | (!i[13]&i[8]&i[6]&i[4]) | (
-    !i[13]&i[9]&i[6]&i[4]) | (!i[13]&i[10]&i[6]&i[4]) | (!i[13]&i[11]
-    &i[6]&i[4]) | (i[15]&i[13]&i[6]&i[4]) | (i[16]&i[13]&i[6]&i[4]) | (
-    i[17]&i[13]&i[6]&i[4]) | (i[18]&i[13]&i[6]&i[4]) | (i[19]&i[13]&i[6]
-    &i[4]);
+assign out.presync = (!i[5]&i[3]) | (i[6]&!i[5]) | (!i[13]&i[7]&i[6]&i[4]) | (!i[13]
+    &i[8]&i[6]&i[4]) | (!i[13]&i[9]&i[6]&i[4]) | (!i[13]&i[10]&i[6]&i[4]) | (
+    !i[13]&i[11]&i[6]&i[4]) | (i[15]&i[13]&i[6]&i[4]) | (i[16]&i[13]&i[6]
+    &i[4]) | (i[17]&i[13]&i[6]&i[4]) | (i[18]&i[13]&i[6]&i[4]) | (i[19]
+    &i[13]&i[6]&i[4]);
 
-assign out.postsync = (i[12]&!i[5]&i[3]) | (!i[22]&!i[13]&!i[12]&i[6]&i[4]) | (
-    !i[13]&i[7]&i[6]&i[4]) | (!i[13]&i[8]&i[6]&i[4]) | (!i[13]&i[9]&i[6]
-    &i[4]) | (!i[13]&i[10]&i[6]&i[4]) | (!i[13]&i[11]&i[6]&i[4]) | (
+assign out.postsync = (i[12]&!i[5]&i[3]) | (!i[22]&!i[13]&!i[12]&i[6]&i[4]) | (i[6]
+    &!i[5]) | (!i[13]&i[7]&i[6]&i[4]) | (!i[13]&i[8]&i[6]&i[4]) | (!i[13]
+    &i[9]&i[6]&i[4]) | (!i[13]&i[10]&i[6]&i[4]) | (!i[13]&i[11]&i[6]&i[4]) | (
     i[15]&i[13]&i[6]&i[4]) | (i[16]&i[13]&i[6]&i[4]) | (i[17]&i[13]&i[6]
     &i[4]) | (i[18]&i[13]&i[6]&i[4]) | (i[19]&i[13]&i[6]&i[4]);
 
-assign out.ebreak = (!i[22]&i[20]&!i[13]&!i[12]&i[6]&i[4]);
+assign out.ebreak = (!i[22]&i[20]&!i[13]&!i[12]&i[6]&i[5]&i[4]);
 
-assign out.ecall = (!i[21]&!i[20]&!i[13]&!i[12]&i[6]&i[4]);
+assign out.ecall = (!i[21]&!i[20]&!i[13]&!i[12]&i[6]&i[5]&i[4]);
 
 assign out.mret = (i[29]&!i[13]&!i[12]&i[6]&i[4]);
 
@@ -1777,10 +1828,16 @@ assign out.sh3add = (i[29]&!i[27]&i[14]&i[13]&!i[6]&i[5]&!i[2]);
 
 assign out.zba = (i[29]&!i[27]&!i[12]&!i[6]&i[5]&i[4]&!i[2]);
 
-assign out.pm_alu = (i[28]&i[20]&!i[13]&!i[12]&i[4]) | (!i[30]&!i[29]&!i[27]&!i[25]
-    &!i[6]&i[4]) | (!i[29]&!i[27]&!i[25]&!i[13]&i[12]&!i[6]&i[4]) | (
-    !i[29]&!i[27]&!i[25]&!i[14]&!i[6]&i[4]) | (i[13]&!i[5]&i[4]) | (i[4]
-    &i[2]) | (!i[12]&!i[5]&i[4]);
+assign out.pm_alu = (i[28]&i[20]&!i[13]&!i[12]&i[5]&i[4]) | (!i[30]&!i[29]&!i[27]
+    &!i[25]&!i[6]&i[4]) | (!i[29]&!i[27]&!i[25]&!i[13]&i[12]&!i[6]&i[4]) | (
+    !i[29]&!i[27]&!i[25]&!i[14]&!i[6]&i[4]) | (i[13]&!i[6]&!i[5]&i[4]) | (
+    !i[12]&!i[6]&!i[5]&i[4]) | (i[4]&i[2]);
+
+assign out.fp_add = (!i[28]&i[6]&!i[5]);
+
+assign out.fp_mul = (i[28]&!i[27]&i[6]&!i[5]);
+
+assign out.fp_div = (i[27]&i[6]&!i[5]);
 
 
 assign out.legal = (!i[31]&!i[30]&i[29]&i[28]&!i[27]&!i[26]&!i[25]&!i[24]&!i[23]
@@ -1788,11 +1845,11 @@ assign out.legal = (!i[31]&!i[30]&i[29]&i[28]&!i[27]&!i[26]&!i[25]&!i[24]&!i[23]
     &!i[10]&!i[9]&!i[8]&!i[7]&i[6]&i[5]&i[4]&!i[3]&!i[2]&i[1]&i[0]) | (
     !i[31]&!i[30]&!i[29]&i[28]&!i[27]&!i[26]&!i[25]&!i[24]&!i[23]&i[22]
     &!i[21]&i[20]&!i[19]&!i[18]&!i[17]&!i[16]&!i[15]&!i[14]&!i[11]&!i[10]
-    &!i[9]&!i[8]&!i[7]&i[6]&i[5]&i[4]&!i[3]&!i[2]&i[1]&i[0]) | (!i[31]
-    &!i[30]&!i[29]&!i[28]&!i[27]&!i[26]&!i[25]&!i[24]&!i[23]&!i[22]&!i[21]
-    &!i[19]&!i[18]&!i[17]&!i[16]&!i[15]&!i[14]&!i[11]&!i[10]&!i[9]&!i[8]
-    &!i[7]&i[5]&i[4]&!i[3]&!i[2]&i[1]&i[0]) | (!i[31]&i[30]&i[29]&!i[28]
-    &!i[26]&!i[25]&i[24]&!i[22]&!i[20]&!i[6]&!i[5]&i[4]&!i[3]&i[1]&i[0]) | (
+    &!i[9]&!i[8]&!i[7]&i[6]&i[4]&!i[3]&!i[2]&i[1]&i[0]) | (!i[31]&!i[30]
+    &!i[29]&!i[28]&!i[27]&!i[26]&!i[25]&!i[24]&!i[23]&!i[22]&!i[21]&!i[19]
+    &!i[18]&!i[17]&!i[16]&!i[15]&!i[14]&!i[11]&!i[10]&!i[9]&!i[8]&!i[7]
+    &i[4]&!i[3]&!i[2]&i[1]&i[0]) | (!i[31]&i[30]&i[29]&!i[28]&!i[26]
+    &!i[25]&i[24]&!i[22]&!i[20]&!i[6]&!i[5]&i[4]&!i[3]&i[1]&i[0]) | (
     !i[31]&i[30]&i[29]&!i[28]&!i[26]&!i[25]&i[24]&!i[22]&!i[21]&!i[6]
     &!i[5]&i[4]&!i[3]&i[1]&i[0]) | (!i[31]&i[30]&i[29]&!i[28]&!i[26]
     &!i[25]&!i[23]&!i[22]&!i[20]&!i[6]&!i[5]&i[4]&!i[3]&i[1]&i[0]) | (
@@ -1804,31 +1861,31 @@ assign out.legal = (!i[31]&!i[30]&i[29]&i[28]&!i[27]&!i[26]&!i[25]&!i[24]&!i[23]
     !i[31]&!i[29]&!i[28]&!i[27]&!i[26]&!i[25]&!i[13]&!i[12]&!i[6]&i[4]
     &!i[3]&i[1]&i[0]) | (!i[31]&i[30]&!i[28]&!i[26]&!i[25]&i[14]&!i[6]
     &!i[5]&i[4]&!i[3]&i[1]&i[0]) | (!i[31]&!i[30]&!i[29]&!i[28]&!i[26]
-    &!i[13]&i[12]&i[5]&i[4]&!i[3]&!i[2]&i[1]&i[0]) | (!i[31]&!i[30]&!i[29]
-    &!i[28]&!i[27]&!i[26]&!i[25]&!i[6]&i[4]&!i[3]&i[1]&i[0]) | (!i[31]
-    &i[30]&i[29]&!i[28]&!i[26]&!i[25]&!i[13]&i[12]&i[5]&i[4]&!i[3]&!i[2]
-    &i[1]&i[0]) | (!i[31]&i[30]&!i[28]&i[27]&!i[26]&!i[25]&!i[13]&i[12]
-    &!i[6]&i[4]&!i[3]&i[1]&i[0]) | (!i[31]&!i[29]&!i[28]&!i[26]&!i[25]
+    &!i[13]&i[12]&i[5]&i[4]&!i[3]&!i[2]&i[1]&i[0]) | (!i[31]&i[30]&i[29]
+    &!i[28]&!i[26]&!i[25]&!i[13]&i[12]&i[5]&i[4]&!i[3]&!i[2]&i[1]&i[0]) | (
+    !i[31]&i[30]&!i[28]&i[27]&!i[26]&!i[25]&!i[13]&i[12]&!i[6]&i[4]&!i[3]
+    &i[1]&i[0]) | (!i[31]&!i[30]&!i[29]&i[28]&!i[26]&!i[25]&i[6]&!i[5]
+    &i[4]&!i[3]&!i[2]&i[1]&i[0]) | (!i[31]&!i[29]&!i[28]&!i[26]&!i[25]
     &i[14]&!i[6]&i[5]&i[4]&!i[3]&i[1]&i[0]) | (!i[31]&i[29]&!i[28]&i[27]
     &!i[26]&!i[25]&!i[13]&i[12]&!i[6]&i[4]&!i[3]&i[1]&i[0]) | (!i[31]
     &!i[30]&!i[29]&!i[28]&!i[27]&!i[26]&!i[6]&i[5]&i[4]&!i[3]&i[1]&i[0]) | (
     !i[31]&!i[30]&!i[29]&!i[28]&!i[26]&i[14]&!i[6]&i[5]&i[4]&!i[3]&i[1]
-    &i[0]) | (!i[14]&!i[13]&!i[12]&i[6]&i[5]&!i[4]&!i[3]&i[1]&i[0]) | (
-    i[14]&i[6]&i[5]&!i[4]&!i[3]&!i[2]&i[1]&i[0]) | (!i[14]&!i[13]&i[5]
-    &!i[4]&!i[3]&!i[2]&i[1]&i[0]) | (!i[12]&!i[6]&!i[5]&i[4]&!i[3]&i[1]
-    &i[0]) | (!i[13]&i[12]&i[6]&i[5]&!i[3]&!i[2]&i[1]&i[0]) | (!i[31]
-    &!i[30]&!i[29]&!i[28]&!i[27]&!i[26]&!i[25]&!i[24]&!i[23]&!i[22]&!i[21]
-    &!i[20]&!i[19]&!i[18]&!i[17]&!i[16]&!i[15]&!i[14]&!i[13]&!i[11]&!i[10]
-    &!i[9]&!i[8]&!i[7]&!i[6]&!i[5]&!i[4]&i[3]&i[2]&i[1]&i[0]) | (!i[31]
-    &!i[30]&!i[29]&!i[28]&!i[19]&!i[18]&!i[17]&!i[16]&!i[15]&!i[14]&!i[13]
-    &!i[12]&!i[11]&!i[10]&!i[9]&!i[8]&!i[7]&!i[6]&!i[5]&!i[4]&i[3]&i[2]
-    &i[1]&i[0]) | (i[13]&i[6]&i[5]&i[4]&!i[3]&!i[2]&i[1]&i[0]) | (!i[31]
-    &!i[30]&!i[28]&!i[26]&!i[25]&i[14]&!i[12]&!i[6]&i[4]&!i[3]&i[1]&i[0]) | (
-    i[6]&i[5]&!i[4]&i[3]&i[2]&i[1]&i[0]) | (!i[14]&!i[12]&!i[6]&!i[4]
-    &!i[3]&!i[2]&i[1]&i[0]) | (!i[13]&!i[6]&!i[5]&!i[4]&!i[3]&!i[2]&i[1]
-    &i[0]) | (i[13]&!i[6]&!i[5]&i[4]&!i[3]&i[1]&i[0]) | (!i[6]&i[4]&!i[3]
-    &i[2]&i[1]&i[0]);
-
+    &i[0]) | (!i[31]&!i[30]&!i[29]&!i[28]&!i[27]&!i[26]&!i[25]&!i[5]&i[4]
+    &!i[3]&!i[2]&i[1]&i[0]) | (!i[14]&!i[13]&!i[12]&i[6]&i[5]&!i[4]&!i[3]
+    &i[1]&i[0]) | (!i[14]&!i[13]&i[5]&!i[4]&!i[3]&!i[2]&i[1]&i[0]) | (
+    i[14]&i[6]&i[5]&!i[4]&!i[3]&!i[2]&i[1]&i[0]) | (!i[12]&!i[6]&!i[5]
+    &i[4]&!i[3]&i[1]&i[0]) | (!i[13]&i[12]&i[6]&i[5]&!i[3]&!i[2]&i[1]
+    &i[0]) | (!i[31]&!i[30]&!i[29]&!i[28]&!i[27]&!i[26]&!i[25]&!i[24]
+    &!i[23]&!i[22]&!i[21]&!i[20]&!i[19]&!i[18]&!i[17]&!i[16]&!i[15]&!i[14]
+    &!i[13]&!i[11]&!i[10]&!i[9]&!i[8]&!i[7]&!i[6]&!i[5]&!i[4]&i[3]&i[2]
+    &i[1]&i[0]) | (!i[31]&!i[30]&!i[29]&!i[28]&!i[19]&!i[18]&!i[17]&!i[16]
+    &!i[15]&!i[14]&!i[13]&!i[12]&!i[11]&!i[10]&!i[9]&!i[8]&!i[7]&!i[6]
+    &!i[5]&!i[4]&i[3]&i[2]&i[1]&i[0]) | (i[13]&i[6]&i[5]&i[4]&!i[3]&!i[2]
+    &i[1]&i[0]) | (!i[31]&!i[30]&!i[28]&!i[26]&!i[25]&i[14]&!i[12]&!i[6]
+    &i[4]&!i[3]&i[1]&i[0]) | (i[6]&i[5]&!i[4]&i[3]&i[2]&i[1]&i[0]) | (
+    !i[14]&!i[12]&!i[6]&!i[4]&!i[3]&!i[2]&i[1]&i[0]) | (!i[13]&!i[6]&!i[5]
+    &!i[4]&!i[3]&!i[2]&i[1]&i[0]) | (i[13]&!i[6]&!i[5]&i[4]&!i[3]&i[1]
+    &i[0]) | (!i[6]&i[4]&!i[3]&i[2]&i[1]&i[0]);
 
 
 

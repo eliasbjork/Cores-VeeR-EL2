@@ -102,6 +102,7 @@ typedef struct packed {
 typedef struct packed {
                        // unlikely to change
                        logic i0div;
+                       logic i0fpu;
                        logic csrwen;
                        logic csrwonly;
                        logic [11:0] csrwaddr;
@@ -297,6 +298,9 @@ typedef struct packed {
                        logic fence_i;
                        logic pm_alu;
                        logic legal;
+                       logic fp_add;
+                       logic fp_mul;
+                       logic fp_div;
                        } el2_dec_pkt_t;
 
 
@@ -331,6 +335,12 @@ typedef struct packed {
                        logic unsign;
                        logic rem;
                        } el2_div_pkt_t;
+
+typedef struct packed {
+                       logic fp_add;
+                       logic fp_mul;
+                       logic fp_div;
+                      } fp_pkt_t;
 
 typedef struct packed {
                        logic        TEST1;

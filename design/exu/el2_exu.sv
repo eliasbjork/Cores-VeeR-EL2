@@ -59,6 +59,9 @@ import el2_pkg::*;
    input el2_div_pkt_t div_p,                                         // DEC {valid, unsigned, rem}
    input logic          dec_div_cancel,                                // Cancel the divide operation
 
+   input fp_pkt_t       fp_p,
+   input logic          dec_fpu_cancel,                                // Cancel the FPU operation
+
    input logic  [31:1]  pred_correct_npc_x,                            // DEC NPC for correctly predicted branch
 
    input logic          dec_tlu_flush_lower_r,                         // Flush divide and secondary ALUs
@@ -103,7 +106,11 @@ import el2_pkg::*;
 
 
    output logic [31:0]  exu_div_result,                                // Divide result
-   output logic         exu_div_wren                                   // Divide write enable to GPR
+   output logic         exu_div_wren,                                  // Divide write enable to GPR
+
+   output logic [31:0]  exu_fpu_result,                                // FPU result
+   output logic         exu_fpu_wren,                                  // FPU write enable to GPR
+   output logic         exu_fpu_active                                 // FPU instruction in flight
   );
 
 
@@ -268,6 +275,18 @@ import el2_pkg::*;
                           .divisor           ( i0_rs2_d[31:0]              ),   // I
                           .finish_dly        ( exu_div_wren                ),   // O
                           .out               ( exu_div_result[31:0]        ));  // O
+
+   sx_exu_fpu_ctl fpu                 (
+                          .clk               ( clk                         ),  // I
+                          .rst_l             ( rst_l                       ),  // I
+                          .fp_p              ( fp_p                        ),  // I
+                          .rs1               ( muldiv_rs1_d[31:0]          ),  // I
+                          .rs2               ( i0_rs2_d[31:0]              ),  // I
+                          .cancel            ( dec_fpu_cancel              ),  // I
+                          .wb_ready          (~exu_div_wren                ),  // I   FPU may writeback if divider is not writing
+                          .busy              ( exu_fpu_active              ),  // O
+                          .result_ready      ( exu_fpu_wren                ),  // O
+                          .rd                ( exu_fpu_result[31:0]        )); // O
 
 
 

@@ -143,6 +143,10 @@ import el2_pkg::*;
    input logic [31:0]  exu_div_result,      // final div result
    input logic         exu_div_wren,        // Divide write enable to GPR
 
+   input logic [31:0]  exu_fpu_result,      // FPU result
+   input logic         exu_fpu_wren,        // FPU write enable to GPR
+   input logic         exu_fpu_active       // FPU instruction in flight
+
    input logic [31:0] exu_csr_rs1_x,        // rs1 for csr instruction
 
    input logic [31:0] lsu_result_m,         // load result
@@ -247,6 +251,9 @@ import el2_pkg::*;
    output el2_mul_pkt_t    mul_p,                  // mul packet
    output el2_div_pkt_t    div_p,                  // div packet
    output logic             dec_div_cancel,         // cancel divide operation
+
+   output fp_pkt_t     fp_p,
+   output logic        dec_fpu_cancel,              // Cancel the FPU operation
 
    output logic [11:0] dec_lsu_offset_d,            // 12b offset for load/store addresses
 
@@ -389,7 +396,29 @@ import el2_pkg::*;
    logic [4:0]                div_waddr_wb;
    logic                      dec_div_active;
 
+   logic [4:0]                fpu_waddr_wb;
+   logic                      dec_fpu_active;
+
    logic                      dec_debug_valid_d;
+
+   logic                      oop_wren;            // write enable for out of pipeline functional units (div, FPU)
+   logic                      oop_waddr_wb;        // writeback address for out of pipeline functional units
+   logic                      oop_result           // result of out of pipeline functional unit
+
+   always_comb begin : oop_wb_select
+      if (exu_div_wren) begin
+         assign oop_wren = 'b1;
+         assign oop_waddr_wb = div_waddr_wb;
+         assign oop_result = exu_div_result;
+      end
+      else if (exu_fpu_wren) begin
+         assign oop_wren = 'b1;
+         assign oop_waddr_wb = fpu_waddr_wb;
+         assign oop_result = exu_fpu_result;
+      end
+      else
+         assign oop_wren = 'b0;
+   end
 
    assign clk_override = dec_tlu_dec_clk_override;
 
@@ -413,7 +442,7 @@ import el2_pkg::*;
 
                     .wen0(dec_i0_wen_r),          .waddr0(dec_i0_waddr_r[4:0]),          .wd0(dec_i0_wdata_r[31:0]),
                     .wen1(dec_nonblock_load_wen), .waddr1(dec_nonblock_load_waddr[4:0]), .wd1(lsu_nonblock_load_data[31:0]),
-                    .wen2(exu_div_wren),          .waddr2(div_waddr_wb),                 .wd2(exu_div_result[31:0]),
+                    .wen2(oop_wren),              .waddr2(oop_waddr_wb),                 .wd2(oop_result[31:0]),
 
                     // outputs
                     .rd0(gpr_i0_rs1_d[31:0]), .rd1(gpr_i0_rs2_d[31:0])

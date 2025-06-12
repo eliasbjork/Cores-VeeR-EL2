@@ -621,6 +621,15 @@ import el2_pkg::*;
    logic [31:0] exu_div_result;
    logic exu_div_wren;
 
+
+   // FPU
+   fp_pkt_t     fp_p;
+   logic        dec_fpu_cancel;     // Cancel the FPU operation
+   logic [31:0] exu_fpu_result;     // FPU result
+   logic        exu_fpu_wren;       // FPU write enable to GPR
+   logic        exu_fpu_active;     // FPU instruction in flight
+
+
    logic dec_i0_decode_d;
 
 

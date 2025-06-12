@@ -289,6 +289,11 @@ divu =       [0000001..........101.....0110011]
 rem =        [0000001..........110.....0110011]
 remu =       [0000001..........111.....0110011]
 
+# FPU
+fadd =       [0000000..................1010011]
+fmul =       [0001000..................1010011]
+fdiv =       [0001100..................1010011]
+
 
 .input
 
@@ -426,6 +431,9 @@ rv32i = {
       sh3add
       zba
       pm_alu
+      fp_add
+      fp_mul
+      fp_div
 }
 
 .decode
@@ -611,6 +619,11 @@ rv32i[csrrwi{0-4}] =         { alu rd csr_read rs1 csr_write csr_imm presync pos
 rv32i[csrw] =                { alu rd rs1 csr_write           }
 
 rv32i[csrwi]       =         { alu rd     csr_write csr_imm   }
+
+# FPU
+rv32i[fadd] = { fp_add rs1 rs2 rd    presync postsync }
+rv32i[fmul] = { fp_mul rs1 rs2 rd    presync postsync }
+rv32i[fdiv] = { fp_div rs1 rs2 rd    presync postsync }
 
 
 .end
