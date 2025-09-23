@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+RV_ROOT ?= $(shell pwd)
+
 ifeq ($(USER_MODE),1)
 USER_MODE_OPTS = -set=user_mode=1
 else
