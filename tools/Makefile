@@ -236,7 +236,11 @@ riviera-build: ${TBFILES} ${BUILD_DIR}/defines.h
 
 ############ TEST Simulation ###############################
 
+ifndef SKIP_HEX_BUILD
 verilator: program.hex verilator-build
+else
+verilator: verilator-build
+endif
 	# FIXME: Assuming here that either begin_signature or end_signature implies
 	# that both symbols are present.
 	grep -E "(begin|end)_signature" $(TEST).sym >/dev/null 2>&1; \
@@ -248,19 +252,35 @@ verilator: program.hex verilator-build
 		./obj_dir/Vtb_top ${TB_EXTRA_ARGS}; \
 	fi
 
+ifndef SKIP_HEX_BUILD
 irun: program.hex irun-build
+else
+irun: irun-build
+endif
 	$(IRUN) -64bit -abvglobalfailurelimit 1 +lic_queue -licqueue \
 	  -status -xmlibdirpath . -xmlibdirname veer.build \
 	  -snapshot ${snapshot} -r $(snapshot) $(IRUN_DEBUG_RUN) $(profile)
 
+ifndef SKIP_HEX_BUILD
 vcs: program.hex vcs-build
+else
+vcs: vcs-build
+endif
 	./simv $(DEBUG_PLUS) +vcs+lic+wait  -l vcs.log
 
+ifndef SKIP_HEX_BUILD
 vlog: program.hex ${TBFILES} ${BUILD_DIR}/defines.h
+else
+vlog: ${TBFILES} ${BUILD_DIR}/defines.h
+endif
 	$(VLOG) -l vlog.log -sv -mfcu +incdir+${BUILD_DIR}+${RV_ROOT}/design/include+${RV_ROOT}/design/lib -ccflags "${CFLAGS}"\
         $(ASSERT_DEFINES) $(defines) -f ${RV_ROOT}/testbench/flist ${TBFILES} ${TB_DPI_SRCS} -R +nowarn3829 +nowarn2583 ${DEBUG_PLUS} -suppress 14408 -suppress 16154
 
+ifndef SKIP_HEX_BUILD
 riviera: program.hex riviera-build
+else
+riviera: riviera-build
+endif
 	vsim -c -lib work ${DEBUG_PLUS} ${RIVIERA_DEBUG} tb_top -do "run -all; exit" -l riviera.log
 
 
