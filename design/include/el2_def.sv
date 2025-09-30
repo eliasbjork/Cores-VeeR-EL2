@@ -104,6 +104,7 @@ typedef struct packed {
 typedef struct packed {
                        // unlikely to change
                        logic i0div;
+                       logic i0fp;
                        logic csrwen;
                        logic csrwonly;
                        logic [11:0] csraddr;
@@ -124,6 +125,7 @@ typedef struct packed {
 typedef struct packed {
                        logic [4:0] rs1;
                        logic [4:0] rs2;
+                       logic [4:0] rs3;
                        logic [4:0] rd;
                        } el2_reg_pkt_t;
 
@@ -252,6 +254,7 @@ typedef struct packed {
                        logic alu;
                        logic rs1;
                        logic rs2;
+                       logic rs3;
                        logic imm12;
                        logic rd;
                        logic shimm5;
@@ -358,6 +361,17 @@ typedef struct packed {
                        logic        BC1;
                        logic        BC2;
                       } el2_dccm_ext_in_pkt_t;
+
+// Floating-point (Zfinx) control packet for EXU FPU wrapper
+typedef struct packed {
+                      logic        valid;     // this is an FP op
+                      logic        fmadd;     // opcode fmadd
+                      logic        fmsub;     // opcode fmsub
+                      logic        fnmadd;    // opcode fnmadd
+                      logic        fnmsub;    // opcode fnmsub
+                      logic [2:0]  rm;        // rounding mode (111 -> use FRM CSR)
+                      logic [1:0]  fmt;       // 00=S, 01=D, 10=Q (only S used for RV32Zfinx)
+                      } el2_fp_pkt_t;
 
 
 typedef struct packed {

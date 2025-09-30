@@ -43,8 +43,10 @@ import el2_pkg::*;
    input logic  [31:0]  lsu_nonblock_load_data,                        // nonblock load data
    input logic          dec_i0_rs1_en_d,                               // Qualify GPR RS1 data
    input logic          dec_i0_rs2_en_d,                               // Qualify GPR RS2 data
+   input logic          dec_i0_rs3_en_d,                               // Qualify GPR RS3 data
    input logic  [31:0]  gpr_i0_rs1_d,                                  // DEC data gpr
    input logic  [31:0]  gpr_i0_rs2_d,                                  // DEC data gpr
+   input logic  [31:0]  gpr_i0_rs3_d,                                  // DEC data gpr (R4 rs3)
    input logic  [31:0]  dec_i0_immed_d,                                // DEC data immediate
    input logic  [31:0]  dec_i0_result_r,                               // DEC result in R-stage
    input logic  [12:1]  dec_i0_br_immed_d,                             // Branch immediate
@@ -54,6 +56,7 @@ import el2_pkg::*;
    input logic  [31:1]  dec_i0_pc_d,                                   // Instruction PC
    input logic  [3:0]   dec_i0_rs1_bypass_en_d,                        // DEC bypass select  1 - X-stage, 0 - dec bypass data
    input logic  [3:0]   dec_i0_rs2_bypass_en_d,                        // DEC bypass select  1 - X-stage, 0 - dec bypass data
+   input logic  [3:0]   dec_i0_rs3_bypass_en_d,                        // DEC bypass select  1 - X-stage, 0 - dec bypass data
    input logic          dec_csr_ren_d,                                 // CSR read select
    input logic  [31:0]  dec_csr_rddata_d,                              // CSR read data
 
@@ -66,6 +69,8 @@ import el2_pkg::*;
 
    input logic          dec_tlu_flush_lower_r,                         // Flush divide and secondary ALUs
    input logic  [31:1]  dec_tlu_flush_path_r,                          // Redirect target
+
+   input el2_fp_pkt_t   dec_fp_p,                                      // FP control packet from DEC
 
 
    input logic         dec_extint_stall,                               // External stall mux select
@@ -106,7 +111,10 @@ import el2_pkg::*;
 
 
    output logic [31:0]  exu_div_result,                                // Divide result
-   output logic         exu_div_wren                                   // Divide write enable to GPR
+   output logic         exu_div_wren,                                  // Divide write enable to GPR
+   // FPU writeback path (stubbed)
+   output logic         exu_fp_wren,
+   output logic [31:0]  exu_fp_result
   );
 
 
@@ -114,9 +122,11 @@ import el2_pkg::*;
 
    logic [31:0]                i0_rs1_bypass_data_d;
    logic [31:0]                i0_rs2_bypass_data_d;
+   logic [31:0]                i0_rs3_bypass_data_d;
    logic                       i0_rs1_bypass_en_d;
    logic                       i0_rs2_bypass_en_d;
-   logic [31:0]                i0_rs1_d,  i0_rs2_d;
+   logic                       i0_rs3_bypass_en_d;
+   logic [31:0]                i0_rs1_d,  i0_rs2_d, i0_rs3_d;
    logic [31:0]                muldiv_rs1_d;
    logic [31:1]                pred_correct_npc_r;
    logic                       i0_pred_correct_upper_r;
@@ -188,6 +198,7 @@ import el2_pkg::*;
 
    assign i0_rs1_bypass_en_d       = dec_i0_rs1_bypass_en_d[0] | dec_i0_rs1_bypass_en_d[1] | dec_i0_rs1_bypass_en_d[2] | dec_i0_rs1_bypass_en_d[3];
    assign i0_rs2_bypass_en_d       = dec_i0_rs2_bypass_en_d[0] | dec_i0_rs2_bypass_en_d[1] | dec_i0_rs2_bypass_en_d[2] | dec_i0_rs2_bypass_en_d[3];
+   assign i0_rs3_bypass_en_d       = dec_i0_rs3_bypass_en_d[0] | dec_i0_rs3_bypass_en_d[1] | dec_i0_rs3_bypass_en_d[2] | dec_i0_rs3_bypass_en_d[3];
 
    assign i0_rs1_bypass_data_d[31:0]=({32{dec_i0_rs1_bypass_en_d[0]}} & dec_i0_result_r[31:0]       ) |
                                      ({32{dec_i0_rs1_bypass_en_d[1]}} & lsu_result_m[31:0]          ) |
@@ -199,6 +210,11 @@ import el2_pkg::*;
                                      ({32{dec_i0_rs2_bypass_en_d[2]}} & exu_i0_result_x[31:0]       ) |
                                      ({32{dec_i0_rs2_bypass_en_d[3]}} & lsu_nonblock_load_data[31:0]);
 
+   assign i0_rs3_bypass_data_d[31:0]=({32{dec_i0_rs3_bypass_en_d[0]}} & dec_i0_result_r[31:0]       ) |
+                                     ({32{dec_i0_rs3_bypass_en_d[1]}} & lsu_result_m[31:0]          ) |
+                                     ({32{dec_i0_rs3_bypass_en_d[2]}} & exu_i0_result_x[31:0]       ) |
+                                     ({32{dec_i0_rs3_bypass_en_d[3]}} & lsu_nonblock_load_data[31:0]);
+
 
    assign i0_rs1_d[31:0]           = ({32{ i0_rs1_bypass_en_d                                           }}             & i0_rs1_bypass_data_d[31:0]) |
                                      ({32{~i0_rs1_bypass_en_d &  dec_i0_select_pc_d                     }}             & {dec_i0_pc_d[31:1],1'b0}  ) |    // for jal's
@@ -208,6 +224,9 @@ import el2_pkg::*;
    assign i0_rs2_d[31:0]           = ({32{~i0_rs2_bypass_en_d & dec_i0_rs2_en_d}}                                      & gpr_i0_rs2_d[31:0]        ) |
                                      ({32{~i0_rs2_bypass_en_d                  }}                                      & dec_i0_immed_d[31:0]      ) |
                                      ({32{ i0_rs2_bypass_en_d                  }}                                      & i0_rs2_bypass_data_d[31:0]);
+
+   assign i0_rs3_d[31:0]           = ({32{~i0_rs3_bypass_en_d & dec_i0_rs3_en_d}}                                      & gpr_i0_rs3_d[31:0]        ) |
+                                     ({32{ i0_rs3_bypass_en_d                  }}                                      & i0_rs3_bypass_data_d[31:0]);
 
 
    assign exu_lsu_rs1_d[31:0]      = ({32{~i0_rs1_bypass_en_d & ~dec_extint_stall & dec_i0_rs1_en_d & dec_qual_lsu_d}} & gpr_i0_rs1_d[31:0]        ) |
@@ -271,6 +290,19 @@ import el2_pkg::*;
                           .divisor           ( i0_rs2_d[31:0]              ),   // I
                           .finish_dly        ( exu_div_wren                ),   // O
                           .out               ( exu_div_result[31:0]        ));  // O
+
+   // Stub FPU wrapper: instantiate and tie off (no writes yet)
+   el2_exu_fp_wrapper #(.pt(pt)) i_fp (
+      .clk(clk),
+      .rst_l(rst_l),
+      .scan_mode(scan_mode),
+      .fp(dec_fp_p),
+      .rs1(gpr_i0_rs1_d),
+      .rs2(gpr_i0_rs2_d),
+      .rs3(gpr_i0_rs3_d),
+      .result(exu_fp_result),
+      .wren(exu_fp_wren)
+   );
 
 
 
@@ -369,6 +401,8 @@ end // else: !if(pt.BTB_ENABLE==1)
                                        ( {31{~dec_tlu_flush_lower_r & i0_flush_upper_d}} & i0_flush_path_d[31:1]      );
 
    assign exu_npc_r[31:1]            = (i0_pred_correct_upper_r)  ?  pred_correct_npc_r[31:1]    :  i0_flush_path_upper_r[31:1];
+
+
 
 
 endmodule // el2_exu

@@ -117,9 +117,12 @@ import el2_pkg::*;
 
    output logic        dec_i0_rs1_en_d,               // rs1 enable at decode
    output logic        dec_i0_rs2_en_d,               // rs2 enable at decode
+   output logic        dec_i0_rs3_en_d,               // rs3 enable at decode
 
    output logic [4:0]  dec_i0_rs1_d,                  // rs1 logical source
    output logic [4:0]  dec_i0_rs2_d,                  // rs2 logical source
+   output logic [4:0]  dec_i0_rs3_d,                  // rs3 logical source (R4 ops)
+   output el2_fp_pkt_t dec_fp_p,                      // FP control packet to EXU
 
    output logic [31:0] dec_i0_immed_d,                // 32b immediate data decode
 
@@ -141,6 +144,7 @@ import el2_pkg::*;
 
    output logic [3:0]    dec_i0_rs1_bypass_en_d,      // i0 rs1 bypass enable
    output logic [3:0]    dec_i0_rs2_bypass_en_d,      // i0 rs2 bypass enable
+   output logic [3:0]    dec_i0_rs3_bypass_en_d,      // i0 rs3 bypass enable
    output logic [31:0]   dec_i0_result_r,             // Result R-stage
 
    output el2_lsu_pkt_t    lsu_p,                    // load/store packet
@@ -212,7 +216,7 @@ import el2_pkg::*;
 
    logic [31:0]        i0_result_r;
 
-   logic [2:0]         i0_rs1bypass, i0_rs2bypass;
+   logic [2:0]         i0_rs1bypass, i0_rs2bypass, i0_rs3bypass;
 
    logic               i0_jalimm20;
    logic               i0_uiimm20;
@@ -260,10 +264,11 @@ import el2_pkg::*;
    logic [12:1]        last_br_immed_d;
    logic               i0_rs1_depend_i0_x, i0_rs1_depend_i0_r;
    logic               i0_rs2_depend_i0_x, i0_rs2_depend_i0_r;
+   logic               i0_rs3_depend_i0_x, i0_rs3_depend_i0_r;
 
    logic               i0_div_decode_d;
    logic               i0_load_block_d;
-   logic [1:0]         i0_rs1_depth_d, i0_rs2_depth_d;
+   logic [1:0]         i0_rs1_depth_d, i0_rs2_depth_d, i0_rs3_depth_d;
 
    logic               i0_load_stall_d;
    logic               i0_store_stall_d;
@@ -296,7 +301,7 @@ import el2_pkg::*;
 
    logic               store_data_bypass_d, store_data_bypass_m;
 
-   el2_class_pkt_t         i0_rs1_class_d, i0_rs2_class_d;
+   el2_class_pkt_t         i0_rs1_class_d, i0_rs2_class_d, i0_rs3_class_d;
 
    el2_class_pkt_t         i0_d_c, i0_x_c, i0_r_c;
 
@@ -400,7 +405,7 @@ import el2_pkg::*;
    logic i0_nonblock_load_stall;
    logic i0_nonblock_boundary_stall;
 
-   logic i0_rs1_nonblock_load_bypass_en_d, i0_rs2_nonblock_load_bypass_en_d;
+   logic i0_rs1_nonblock_load_bypass_en_d, i0_rs2_nonblock_load_bypass_en_d, i0_rs3_nonblock_load_bypass_en_d;
 
    logic i0_load_kill_wen_r;
 
@@ -429,8 +434,10 @@ import el2_pkg::*;
 
    logic               debug_valid_x;
 
-   el2_inst_pkt_t i0_itype;
-   el2_reg_pkt_t i0r;
+  el2_inst_pkt_t i0_itype;
+  el2_reg_pkt_t i0r;
+  // FP (Zfinx) minimal control
+  el2_fp_pkt_t   fp_p;
 
 
    rvdffie  #(8) misc1ff (.*,
@@ -532,13 +539,34 @@ end // else: !if(pt.BTB_ENABLE==1)
          i0_dp.alu      = 1'b1;
          i0_dp.rs1      = 1'b1;
          i0_dp.rs2      = 1'b1;
+         i0_dp.rs3      = 1'b1;
          i0_dp.lor      = 1'b1;
          i0_dp.legal    = 1'b1;
          i0_dp.postsync = 1'b1;
       end
    end
 
-   assign i0[31:0] = dec_i0_instr_d[31:0];
+  assign i0[31:0] = dec_i0_instr_d[31:0];
+
+  // Minimal FP R4 decode (Zfinx uses GPRs): fmadd/fmsub/fnmadd/fnmsub
+  logic is_fmadd_d, is_fmsub_d, is_fnmsub_d, is_fnmadd_d;
+  assign is_fmadd_d  = (i0[6:0] == 7'h43);
+  assign is_fmsub_d  = (i0[6:0] == 7'h47);
+  assign is_fnmsub_d = (i0[6:0] == 7'h4B);
+  assign is_fnmadd_d = (i0[6:0] == 7'h4F);
+
+  always_comb begin
+    fp_p = '0;
+    fp_p.valid  = (is_fmadd_d | is_fmsub_d | is_fnmsub_d | is_fnmadd_d) & dec_i0_decode_d;
+    fp_p.fmadd  = is_fmadd_d;
+    fp_p.fmsub  = is_fmsub_d;
+    fp_p.fnmadd = is_fnmadd_d;
+    fp_p.fnmsub = is_fnmsub_d;
+    fp_p.rm     = i0[14:12];       // rounding mode field
+    fp_p.fmt    = i0[26:25];       // precision selector (funct2)
+  end
+
+  assign dec_fp_p = fp_p;
 
    assign dec_i0_select_pc_d = i0_dp.pc;
 
@@ -709,12 +737,14 @@ end : cam_array
          dec_nonblock_load_waddr[4:0] |= ({5{nonblock_load_write[i]}} & cam[i].rd[4:0]);
          i0_nonblock_load_stall |= dec_i0_rs1_en_d & cam[i].valid & (cam[i].rd[4:0] == i0r.rs1[4:0]);
          i0_nonblock_load_stall |= dec_i0_rs2_en_d & cam[i].valid & (cam[i].rd[4:0] == i0r.rs2[4:0]);
+         i0_nonblock_load_stall |= dec_i0_rs3_en_d & cam[i].valid & (cam[i].rd[4:0] == i0r.rs3[4:0]);
       end
 
    end
 
    assign i0_nonblock_boundary_stall = ((nonblock_load_rd[4:0]==i0r.rs1[4:0]) & lsu_nonblock_load_valid_m & dec_i0_rs1_en_d) |
-                                       ((nonblock_load_rd[4:0]==i0r.rs2[4:0]) & lsu_nonblock_load_valid_m & dec_i0_rs2_en_d);
+                                       ((nonblock_load_rd[4:0]==i0r.rs2[4:0]) & lsu_nonblock_load_valid_m & dec_i0_rs2_en_d) |
+                                       ((nonblock_load_rd[4:0]==i0r.rs3[4:0]) & lsu_nonblock_load_valid_m & dec_i0_rs3_en_d);
 
 
 
@@ -888,17 +918,22 @@ end : cam_array
 
 
 
-   assign i0r.rs1[4:0] = i0[19:15];
-   assign i0r.rs2[4:0] = i0[24:20];
-   assign i0r.rd[4:0]  = i0[11:7];
+  assign i0r.rs1[4:0] = i0[19:15];
+  assign i0r.rs2[4:0] = i0[24:20];
+  assign i0r.rs3[4:0] = i0[31:27];
+  assign i0r.rd[4:0]  = i0[11:7];
+
+
 
 
    assign dec_i0_rs1_en_d   =  i0_dp.rs1 & (i0r.rs1[4:0] != 5'd0);  // if rs1_en=0 then read will be all 0's
    assign dec_i0_rs2_en_d   =  i0_dp.rs2 & (i0r.rs2[4:0] != 5'd0);
+   assign dec_i0_rs3_en_d   =  i0_dp.rs3 & (i0r.rs3[4:0] != 5'd0);
    assign i0_rd_en_d        =  i0_dp.rd  & (i0r.rd[4:0]  != 5'd0);
 
    assign dec_i0_rs1_d[4:0] =  i0r.rs1[4:0];
    assign dec_i0_rs2_d[4:0] =  i0r.rs2[4:0];
+   assign dec_i0_rs3_d[4:0] = i0r.rs3[4:0];
 
 
    assign i0_jalimm20       =  i0_dp.jal & i0_dp.imm20;   // jal
@@ -1200,6 +1235,9 @@ end : cam_array
    assign i0_rs2_depend_i0_x  = dec_i0_rs2_en_d & x_d.i0v & (x_d.i0rd[4:0] == i0r.rs2[4:0]);
    assign i0_rs2_depend_i0_r  = dec_i0_rs2_en_d & r_d.i0v & (r_d.i0rd[4:0] == i0r.rs2[4:0]);
 
+   assign i0_rs3_depend_i0_x  = dec_i0_rs3_en_d & x_d.i0v & (x_d.i0rd[4:0] == i0r.rs3[4:0]);
+   assign i0_rs3_depend_i0_r  = dec_i0_rs3_en_d & r_d.i0v & (r_d.i0rd[4:0] == i0r.rs3[4:0]);
+
 
 // order the producers as follows:  , i0_x, i0_r, i0_wb
 
@@ -1209,12 +1247,16 @@ end : cam_array
    assign {i0_rs2_class_d, i0_rs2_depth_d[1:0]} = (i0_rs2_depend_i0_x ) ? { i0_x_c,  2'd1  } :
                                                   (i0_rs2_depend_i0_r ) ? { i0_r_c,  2'd2  } : '0;
 
+   assign {i0_rs3_class_d, i0_rs3_depth_d[1:0]} = (i0_rs3_depend_i0_x ) ? { i0_x_c,  2'd1  } :
+                                                  (i0_rs3_depend_i0_r ) ? { i0_r_c,  2'd2  } : '0;
+
 
 // stores will bypass load data in the lsu pipe
 
    if (pt.LOAD_TO_USE_PLUS1 == 1) begin : genblock
       assign i0_load_block_d = (i0_rs1_class_d.load & i0_rs1_depth_d[0]) |
-                               (i0_rs2_class_d.load & i0_rs2_depth_d[0] & ~i0_dp.store);
+                               (i0_rs2_class_d.load & i0_rs2_depth_d[0] & ~i0_dp.store) |
+                               (i0_rs3_class_d.load & i0_rs3_depth_d[0]);
 
       assign load_ldst_bypass_d    =  (i0_dp.load | i0_dp.store) & i0_rs1_depth_d[1] & i0_rs1_class_d.load;
 
@@ -1300,9 +1342,11 @@ end : cam_array
    rvdffs #( $bits(el2_class_pkt_t) ) i0_r_c_ff   (.*, .en(i0_r_ctl_en),  .clk(active_clk), .din(i0_x_c),  .dout(i0_r_c));
 
 
-   assign d_d.i0rd[4:0]             =  i0r.rd[4:0];
-   assign d_d.i0v                   =  i0_rd_en_d  & i0_legal_decode_d;
-   assign d_d.i0valid               =  dec_i0_decode_d;  // has flush_final_r
+  assign d_d.i0rd[4:0]             =  i0r.rd[4:0];
+  assign d_d.i0v                   =  i0_rd_en_d  & i0_legal_decode_d;
+  assign d_d.i0valid               =  dec_i0_decode_d;  // has flush_final_r
+  // mark FP op in dest class when fp_p.valid (used to hold writes/forwarding if needed)
+  assign d_d.i0fp                  =  fp_p.valid & i0_legal_decode_d;
 
    assign d_d.i0load                =  i0_dp.load  & i0_legal_decode_d;
    assign d_d.i0store               =  i0_dp.store & i0_legal_decode_d;
@@ -1380,7 +1424,8 @@ end : cam_array
    // nonblocking div scheme
 
    assign i0_nonblock_div_stall  = (dec_i0_rs1_en_d & div_active & (div_waddr_wb[4:0] == i0r.rs1[4:0])) |
-                                   (dec_i0_rs2_en_d & div_active & (div_waddr_wb[4:0] == i0r.rs2[4:0]));
+                                   (dec_i0_rs2_en_d & div_active & (div_waddr_wb[4:0] == i0r.rs2[4:0])) |
+                                   (dec_i0_rs3_en_d & div_active & (div_waddr_wb[4:0] == i0r.rs3[4:0]));
 
 
    assign div_flush              = (x_d.i0div & x_d.i0valid & (x_d.i0rd[4:0]==5'b0)                           ) |
@@ -1460,7 +1505,7 @@ end : cam_array
 
    assign i0_rs2_nonblock_load_bypass_en_d  = dec_i0_rs2_en_d & dec_nonblock_load_wen & (dec_nonblock_load_waddr[4:0] == i0r.rs2[4:0]);
 
-
+   assign i0_rs3_nonblock_load_bypass_en_d  = dec_i0_rs3_en_d & dec_nonblock_load_wen & (dec_nonblock_load_waddr[4:0] == i0r.rs3[4:0]);
 
    // bit 2 is priority match, bit 0 lowest priority, i0_x, i0_r
 
@@ -1472,6 +1517,10 @@ end : cam_array
    assign i0_rs2bypass[1]                =  i0_rs2_depth_d[0] & (                                          i0_rs2_class_d.load);
    assign i0_rs2bypass[0]                =  i0_rs2_depth_d[1] & (i0_rs2_class_d.alu | i0_rs2_class_d.mul | i0_rs2_class_d.load);
 
+   assign i0_rs3bypass[2]                =  i0_rs3_depth_d[0] & (i0_rs3_class_d.alu | i0_rs3_class_d.mul                      );
+   assign i0_rs3bypass[1]                =  i0_rs3_depth_d[0] & (                                          i0_rs3_class_d.load);
+   assign i0_rs3bypass[0]                =  i0_rs3_depth_d[1] & (i0_rs3_class_d.alu | i0_rs3_class_d.mul | i0_rs3_class_d.load);
+
 
    assign dec_i0_rs1_bypass_en_d[3]      =  i0_rs1_nonblock_load_bypass_en_d & ~i0_rs1bypass[0] & ~i0_rs1bypass[1] & ~i0_rs1bypass[2];
    assign dec_i0_rs1_bypass_en_d[2]      =  i0_rs1bypass[2];
@@ -1482,6 +1531,11 @@ end : cam_array
    assign dec_i0_rs2_bypass_en_d[2]      =  i0_rs2bypass[2];
    assign dec_i0_rs2_bypass_en_d[1]      =  i0_rs2bypass[1];
    assign dec_i0_rs2_bypass_en_d[0]      =  i0_rs2bypass[0];
+
+   assign dec_i0_rs3_bypass_en_d[3]      =  i0_rs3_nonblock_load_bypass_en_d & ~i0_rs3bypass[0] & ~i0_rs3bypass[1] & ~i0_rs3bypass[2];
+   assign dec_i0_rs3_bypass_en_d[2]      =  i0_rs3bypass[2];
+   assign dec_i0_rs3_bypass_en_d[1]      =  i0_rs3bypass[1];
+   assign dec_i0_rs3_bypass_en_d[0]      =  i0_rs3bypass[0];
 
 
    assign dec_i0_result_r[31:0]          =  i0_result_r[31:0];
