@@ -289,6 +289,10 @@ divu =       [0000001..........101.....0110011]
 rem =        [0000001..........110.....0110011]
 remu =       [0000001..........111.....0110011]
 
+fadd =       [0000000..................1010011]
+fdiv =       [0001100..................1010011]
+fnmsub =     [.....00..................1000111]
+
 
 .input
 
@@ -334,6 +338,7 @@ rv32i = {
       alu
       rs1
       rs2
+      rs3
       imm12
       rd
       shimm5
@@ -426,6 +431,25 @@ rv32i = {
       sh3add
       zba
       pm_alu
+      fp
+      f_fmadd;
+      f_fnmsub;
+      f_add;
+      f_mul;
+      f_div;
+      f_sqrt;
+      f_sgnj;
+      f_minmax;
+      f_cmp;
+      f_classify;
+      f_f2f;
+      f_f2i;
+      f_i2f;
+      f_cpkab;
+      f_cpkcd;
+      f_adds;
+      f_op_mod_i;
+      f_cisc_op;
 }
 
 .decode
@@ -612,6 +636,11 @@ rv32i[csrw] =                { alu rd rs1 csr_write           }
 
 rv32i[csrwi]       =         { alu rd     csr_write csr_imm   }
 
+# fpu instructions
+
+rv32i[fadd] =   { fp rd rs1 rs2     fadd }
+rv32i[fdiv] =   { fp rd rs1 rs2     fdiv }
+rv32i[fnmsub] = { fp rd rs1 rs2 rs3 fnmsub }
 
 .end
 
