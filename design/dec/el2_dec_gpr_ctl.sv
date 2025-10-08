@@ -21,7 +21,6 @@ import el2_pkg::*;
     input logic [4:0]  raddr0,       // logical read addresses
     input logic [4:0]  raddr1,
     input logic [4:0]  raddr2,       // for fused instrs
-    input logic [4:0]  raddr3,       // for accelerator direct reg access
 
     input logic        wen0,         // write enable
     input logic [4:0]  waddr0,       // write address
@@ -45,7 +44,6 @@ import el2_pkg::*;
     output logic [31:0] rd0,         // read data
     output logic [31:0] rd1,
     output logic [31:0] rd2,         // read data
-    output logic [31:0] rd3,
 
 `ifdef RV_LOCKSTEP_REGFILE_ENABLE
     el2_regfile_if.veer_gpr_rf regfile,
@@ -86,6 +84,7 @@ import el2_pkg::*;
    always_comb begin
       rd0[31:0] = 32'b0;
       rd1[31:0] = 32'b0;
+      rd2[31:0] = 32'b0;
       w0v[31:1] = 31'b0;
       w1v[31:1] = 31'b0;
       w2v[31:1] = 31'b0;
@@ -97,7 +96,6 @@ import el2_pkg::*;
          rd0[31:0] |= ({32{(raddr0[4:0]== 5'(j))}} & gpr_out[j][31:0]);
          rd1[31:0] |= ({32{(raddr1[4:0]== 5'(j))}} & gpr_out[j][31:0]);
          rd2[31:0] |= ({32{(raddr2[4:0]== 5'(j))}} & gpr_out[j][31:0]);
-         rd3[31:0] |= ({32{(raddr3[4:0]== 5'(j))}} & gpr_out[j][31:0]);
       end
 
      // GPR Write logic

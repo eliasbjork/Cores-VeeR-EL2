@@ -451,26 +451,26 @@ rv32i = {
       sh3add
       zba
       pm_alu
-      fp
-      f_fmadd;
-      f_fnmsub;
-      f_add;
-      f_mul;
-      f_div;
-      f_divsqrt;
-      f_sqrt;
-      f_sgnj;
-      f_minmax;
-      f_cmp;
-      f_classify;
-      f_f2f;
-      f_f2i;
-      f_i2f;
-      f_cpkab;
-      f_cpkcd;
-      f_adds;
-      f_op_mod_i;
-      f_cisc_op;
+      fpu
+      fpu_div
+      f_fmadd
+      f_fnmsub
+      f_add
+      f_mul
+      f_div
+      f_sqrt
+      f_sgnj
+      f_minmax
+      f_cmp
+      f_classify
+      f_f2f
+      f_f2i
+      f_i2f
+      f_cpkab
+      f_cpkcd
+      f_adds
+      f_op_mod
+      f_cisc_op
 }
 
 .decode
@@ -659,28 +659,28 @@ rv32i[csrwi]       =         { alu rd     csr_write csr_imm   }
 
 # fpu instructions
 
-rv32i[fmadd.s] =   { fp           rd rs1 rs2 rs3 f_fmadd               }
-rv32i[fmsub.s] =   { fp           rd rs1 rs2 rs3 f_fmadd    f_op_mod_i }
-rv32i[fnmadd.s] =  { fp           rd rs1 rs2 rs3 f_fnmsub   f_op_mod_i }
-rv32i[fnmsub.s] =  { fp           rd rs1 rs2 rs3 f_fnmsub              }
-rv32i[fadd.s] =    { fp           rd rs1 rs2     f_add                 }
-rv32i[fsub.s] =    { fp           rd rs1 rs2     f_add      f_op_mod_i }
-rv32i[fmul.s] =    { fp           rd rs1 rs2     f_mul                 }
-rv32i[fdiv.s] =    { fp f_divsqrt rd rs1 rs2     f_div                 }
-rv32i[fsqrt.s] =   { fp f_divsqrt rd rs1 rs2     f_sqrt                }
-rv32i[fsgnj.s] =   { fp           rd rs1 rs2     f_sgnj                } # f_op_mod_i? NaN-box vs sign extend (not relevant for only fp32 i guess) (see FPnew docs)
-rv32i[fsgnjn.s] =  { fp           rd rs1 rs2     f_sgnj                } # f_op_mod_i? NaN-box vs sign extend (not relevant for only fp32 i guess) (see FPnew docs)
-rv32i[fsgnjx.s] =  { fp           rd rs1 rs2     f_sgnj                } # f_op_mod_i? NaN-box vs sign extend (not relevant for only fp32 i guess) (see FPnew docs)
-rv32i[fmin.s] =    { fp           rd rs1 rs2     f_minmax              }
-rv32i[fmax.s] =    { fp           rd rs1 rs2     f_minmax              }
-rv32i[feq.s] =     { fp           rd rs1 rs2     f_cmp                 }
-rv32i[flt.s] =     { fp           rd rs1 rs2     f_cmp                 }
-rv32i[fle.s] =     { fp           rd rs1 rs2     f_cmp                 }
-rv32i[fcvt.w.s] =  { fp           rd rs1         f_f2i                 }
-rv32i[fcvt.wu.s] = { fp           rd rs1         f_f2i      f_op_mod_i }
-rv32i[fcvt.s.w] =  { fp           rd rs1         f_i2f                 }
-rv32i[fcvt.s.wu] = { fp           rd rs1         f_i2f      f_op_mod_i }
-rv32i[fclass.s] =  { fp           rd rs1         f_classify            }
+rv32i[fmadd.s] =   { fpu        rd rs1 rs2 rs3 f_fmadd               }
+rv32i[fmsub.s] =   { fpu        rd rs1 rs2 rs3 f_fmadd    f_op_mod }
+rv32i[fnmadd.s] =  { fpu        rd rs1 rs2 rs3 f_fnmsub   f_op_mod }
+rv32i[fnmsub.s] =  { fpu        rd rs1 rs2 rs3 f_fnmsub              }
+rv32i[fadd.s] =    { fpu        rd rs1 rs2     f_add                 }
+rv32i[fsub.s] =    { fpu        rd rs1 rs2     f_add      f_op_mod }
+rv32i[fmul.s] =    { fpu        rd rs1 rs2     f_mul                 }
+rv32i[fdiv.s] =    { fpu fpu_div rd rs1 rs2     f_div                 }
+rv32i[fsqrt.s] =   { fpu fpu_div rd rs1 rs2     f_sqrt                }
+rv32i[fsgnj.s] =   { fpu        rd rs1 rs2     f_sgnj                } # f_op_mod? NaN-box vs sign extend (not relevant for only fp32 i guess) (see FPnew docs)
+rv32i[fsgnjn.s] =  { fpu        rd rs1 rs2     f_sgnj                } # f_op_mod? NaN-box vs sign extend (not relevant for only fp32 i guess) (see FPnew docs)
+rv32i[fsgnjx.s] =  { fpu        rd rs1 rs2     f_sgnj                } # f_op_mod? NaN-box vs sign extend (not relevant for only fp32 i guess) (see FPnew docs)
+rv32i[fmin.s] =    { fpu        rd rs1 rs2     f_minmax              }
+rv32i[fmax.s] =    { fpu        rd rs1 rs2     f_minmax              }
+rv32i[feq.s] =     { fpu        rd rs1 rs2     f_cmp                 }
+rv32i[flt.s] =     { fpu        rd rs1 rs2     f_cmp                 }
+rv32i[fle.s] =     { fpu        rd rs1 rs2     f_cmp                 }
+rv32i[fcvt.w.s] =  { fpu        rd rs1         f_f2i                 }
+rv32i[fcvt.wu.s] = { fpu        rd rs1         f_f2i      f_op_mod }
+rv32i[fcvt.s.w] =  { fpu        rd rs1         f_i2f                 }
+rv32i[fcvt.s.wu] = { fpu        rd rs1         f_i2f      f_op_mod }
+rv32i[fclass.s] =  { fpu        rd rs1         f_classify            }
 
 .end
 

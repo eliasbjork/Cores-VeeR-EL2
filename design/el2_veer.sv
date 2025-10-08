@@ -726,6 +726,12 @@ import el2_pkg::*;
    logic [31:0] exu_div_result;
    logic exu_div_wren;
 
+   el2_fpu_pkt_t  fpu_p;
+   logic         dec_fpu_div_cancel;
+
+   logic [31:0] exu_fpu_div_result;
+   logic exu_fpu_div_wren;
+
    logic dec_i0_decode_d;
 
 
@@ -917,11 +923,6 @@ import el2_pkg::*;
    logic                   dec_extint_stall;
 
    el2_trace_pkt_t  trace_rv_trace_pkt;
-   el2_fp_pkt_t     dec_fp_p;        // FP control packet from DEC
-
-   // FPU writeback from EXU (optional)
-   logic            exu_fp_wren;
-   logic  [31:0]    exu_fp_result;
 
 
    logic                   lsu_fastint_stall_any;
@@ -1025,17 +1026,13 @@ import el2_pkg::*;
                             .clk(active_l2clk),
                             .dbg_cmd_wrdata(dbg_cmd_wrdata[1:0]),
                             .rst_l(core_rst_l),
-                            .*,
-                            .exu_fp_wren(exu_fp_wren),
-                            .exu_fp_result(exu_fp_result)
+                            .*
                             );
 
    el2_exu #(.pt(pt)) exu (
                             .clk(active_l2clk),
                             .rst_l(core_rst_l),
-                            .*,
-                            .exu_fp_wren(exu_fp_wren),
-                            .exu_fp_result(exu_fp_result)
+                            .*
                             );
 
    el2_lsu #(.pt(pt)) lsu (
