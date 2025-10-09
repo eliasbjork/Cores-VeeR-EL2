@@ -37,6 +37,8 @@ module el2_exu_fpu_ctl
 
   logic valid_div;
 
+  logic status, busy, in_ready;
+
 
 
 //TODO: is this always the order?? Check!
@@ -66,7 +68,8 @@ rvdffe #(32) result_ff    (.*, .clk(clk),  .din(result),   .dout(x_result),   .e
   fpnew_top #(
       .Features(RV32F),
       .Implementation(DEFAULT_NOREGS),
-      .TagType(logic)
+      .TagType(logic),
+      .DivSqrtSel(PULP)
   ) fpu (
       .clk_i(clk),
       .rst_ni(rst_l),
@@ -85,7 +88,10 @@ rvdffe #(32) result_ff    (.*, .clk(clk),  .din(result),   .dout(x_result),   .e
       .flush_i(cancel),
       .result_o(result),
       .tag_o(valid_div),
-      .out_valid_o(valid)
+      .out_valid_o(valid),
+      .status_o(status),
+      .busy_o(busy),
+      .in_ready_o(in_ready)
   );
 
 endmodule

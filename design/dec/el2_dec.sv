@@ -485,7 +485,7 @@ module el2_dec
 
 
   el2_dec_gpr_ctl #(
-  .raddr2(dec_i0_rs3_d[4:0]),
+      .pt(pt)
   ) arf (
       .*,
 `ifdef RV_LOCKSTEP_REGFILE_ENABLE

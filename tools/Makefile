@@ -80,7 +80,10 @@ endif
 
 VERILATOR_SKIP_WARNINGS = $(VERILATOR_NOIMPLICIT) -Wno-TIMESCALEMOD -Wno-ASCRANGE \
 	-Wno-CASEINCOMPLETE -Wno-INITIALDLY -Wno-WIDTH -Wno-UNOPTFLAT -Wno-SIDEEFFECT \
-	-Wno-LATCH
+	-Wno-LATCH \
+	-Wno-SELRANGE \
+	-Wno-UNSIGNED \
+	-fno-dfg-peephole \
 
 # Define test name
 TEST = hello_world

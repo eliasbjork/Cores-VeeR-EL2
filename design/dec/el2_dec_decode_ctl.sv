@@ -957,8 +957,8 @@ else begin
   assign fpu_p.cpkab = i0_dp.f_cpkab;
   assign fpu_p.cpkcd = i0_dp.f_cpkcd;
   assign fpu_p.adds = i0_dp.f_adds;
-  assign fpu_p.op_mod = i0_dp.f_op_mod_i;
-  assign fpu_p.cisc_op = i0_dp.cisc_op;
+  assign fpu_p.op_mod = i0_dp.f_op_mod;
+  assign fpu_p.cisc_op = i0_dp.f_cisc_op;
   assign fpu_p.rm [2:0] = i0[14:12];
 
   always_comb begin
@@ -1663,7 +1663,7 @@ else begin
   rvdffe #(
       .WIDTH(5),
       .OVERRIDE(1)
-  ) i0rdff (
+  ) i0rfpdff (
       .*,
       .en  (i0_fpu_div_decode_d),
       .din (i0r.rd[4:0]),

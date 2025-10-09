@@ -379,7 +379,7 @@ module el2_exu
   );  // O
 
   // Stub FPU wrapper: instantiate and tie off (no writes yet)
-  el2_exu_fpu_wrapper #(
+  el2_exu_fpu_ctl #(
       .pt(pt)
   ) i_fpu (
       .*,
