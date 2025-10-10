@@ -42,13 +42,6 @@ module el2_exu_fpu_ctl
 
   assign rm = (!&fpu_p.rm[2:0]) ? fpu_p.rm[2:0] : 3'b000;
 
-
-
-//TODO: is this always the order?? Check!
-  assign fpu_operands[2][31:0] = rs3[31:0];
-  assign fpu_operands[1][31:0] = rs2[31:0];
-  assign fpu_operands[0][31:0] = rs1[31:0];
-
   assign fp_fmt = FP32;
   assign int_fmt = INT32;
 
@@ -64,26 +57,26 @@ module el2_exu_fpu_ctl
   assign fpu_op[3] = fpu_p.cmp | fpu_p.classify | fpu_p.f2f | fpu_p.f2i | fpu_p.i2f | fpu_p.cpkab | fpu_p.cpkcd | fpu_p.adds;
 
   always_comb begin
-  case (fpu_op)
+  unique case (fpu_op)
     FMADD, FNMSUB: begin
-      fpu_operands[0][31:0] = rs1[31:0];
-      fpu_operands[1][31:0] = rs2[31:0];
-      fpu_operands[2][31:0] = rs3[31:0];
+      fpu_operands[0] = rs1;
+      fpu_operands[1] = rs2;
+      fpu_operands[2] = rs3;
     end
     ADD, ADDS: begin
-      fpu_operands[0][31:0] = '0;
-      fpu_operands[1][31:0] = rs1[31:0];
-      fpu_operands[2][31:0] = rs2[31:0];
+      fpu_operands[0] = '0;
+      fpu_operands[1] = rs1;
+      fpu_operands[2] = rs2;
     end
     SQRT, F2F, F2I, I2F, CLASSIFY: begin
-      fpu_operands[0][31:0] = rs1[31:0];
-      fpu_operands[1][31:0] = '0;
-      fpu_operands[2][31:0] = '0;
+      fpu_operands[0] = rs1;
+      fpu_operands[1] = '0;
+      fpu_operands[2] = '0;
     end
     default: begin
-      fpu_operands[0][31:0] = rs1[31:0];
-      fpu_operands[1][31:0] = rs2[31:0];
-      fpu_operands[2][31:0] = '0;
+      fpu_operands[0] = rs1;
+      fpu_operands[1] = rs2;
+      fpu_operands[2] = '0;
     end
   endcase
   end
@@ -102,7 +95,7 @@ rvdffe #(32) result_ff    (.*, .clk(clk),  .din(result),   .dout(x_result),   .e
       .clk_i(clk),
       .rst_ni(rst_l),
       .operands_i(fpu_operands),
-      .rnd_mode_i(fpu_p.rm[2:0]),
+      .rnd_mode_i(rm),
       .op_i(fpu_op),
       .op_mod_i(fpu_p.op_mod),
       .src_fmt_i(fp_fmt),
