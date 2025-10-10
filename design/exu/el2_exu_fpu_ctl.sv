@@ -38,6 +38,9 @@ module el2_exu_fpu_ctl
   logic valid_div;
 
   logic status, busy, in_ready;
+  roundmode_e rm;
+
+  assign rm = (!&fpu_p.rm[2:0]) ? fpu_p.rm[2:0] : 3'b000;
 
 
 
@@ -59,6 +62,31 @@ module el2_exu_fpu_ctl
   assign fpu_op[1] = fpu_p.add | fpu_p.mul | fpu_p.sgnj | fpu_p.minmax | fpu_p.f2f | fpu_p.f2i | fpu_p.cpkcd | fpu_p.adds;
   assign fpu_op[2] = fpu_p.div | fpu_p.sqrt | fpu_p.sgnj | fpu_p.minmax | fpu_p.i2f | fpu_p.cpkab | fpu_p.cpkcd | fpu_p.adds;
   assign fpu_op[3] = fpu_p.cmp | fpu_p.classify | fpu_p.f2f | fpu_p.f2i | fpu_p.i2f | fpu_p.cpkab | fpu_p.cpkcd | fpu_p.adds;
+
+  always_comb begin
+  case (fpu_op)
+    FMADD, FNMSUB: begin
+      fpu_operands[0][31:0] = rs1[31:0];
+      fpu_operands[1][31:0] = rs2[31:0];
+      fpu_operands[2][31:0] = rs3[31:0];
+    end
+    ADD, ADDS: begin
+      fpu_operands[0][31:0] = '0;
+      fpu_operands[1][31:0] = rs1[31:0];
+      fpu_operands[2][31:0] = rs2[31:0];
+    end
+    SQRT, F2F, F2I, I2F, CLASSIFY: begin
+      fpu_operands[0][31:0] = rs1[31:0];
+      fpu_operands[1][31:0] = '0;
+      fpu_operands[2][31:0] = '0;
+    end
+    default: begin
+      fpu_operands[0][31:0] = rs1[31:0];
+      fpu_operands[1][31:0] = rs2[31:0];
+      fpu_operands[2][31:0] = '0;
+    end
+  endcase
+  end
 
 
 rvdffe #(32) result_ff    (.*, .clk(clk),  .din(result),   .dout(x_result),   .en(valid & ~valid_div));
