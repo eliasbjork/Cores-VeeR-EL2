@@ -40,7 +40,7 @@ module el2_exu_fpu_ctl
   logic status, busy, in_ready;
   roundmode_e rm;
 
-  assign rm = (!&fpu_p.rm[2:0]) ? fpu_p.rm[2:0] : 3'b000;
+  assign rm = (!&fpu_p.rm[2:0]) ? fpu_p.rm[2:0] : RNE;
 
 
 
