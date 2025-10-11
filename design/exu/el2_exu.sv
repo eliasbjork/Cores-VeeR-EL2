@@ -316,10 +316,10 @@ module el2_exu
                                      ({32{ i0_rs3_bypass_en_d                  }}                                      & i0_rs3_bypass_data_d[31:0]);
 
 
-  assign exu_lsu_rs1_d[31:0]      = ({32{~i0_rs1_bypass_en_d & ~dec_extint_stall & dec_i0_rs1_en_d & dec_qual_lsu_d & (~dec_special_lsu_d & ~dec_lsu_load_d)}} & gpr_i0_rs1_d[31:0]         ) |
-                                    ({32{ i0_rs1_bypass_en_d & ~dec_extint_stall                   & dec_qual_lsu_d & (~dec_special_lsu_d & ~dec_lsu_load_d)}} & i0_rs1_bypass_data_d[31:0] ) |
-                                    ({32{                       dec_extint_stall                   & dec_qual_lsu_d                     }} & {dec_tlu_meihap[31:2],2'b0}) |
-                                    ({32{                    & ~dec_extint_stall                   & dec_qual_lsu_d &  (dec_special_lsu_d & dec_lsu_load_d)}} & last_special_lsu_rs1[31:0] );
+  assign exu_lsu_rs1_d[31:0]      = ({32{~i0_rs1_bypass_en_d & ~dec_extint_stall & dec_i0_rs1_en_d & dec_qual_lsu_d & (~dec_special_lsu_d | dec_lsu_load_d)}} & gpr_i0_rs1_d[31:0]         ) |
+                                    ({32{ i0_rs1_bypass_en_d & ~dec_extint_stall                   & dec_qual_lsu_d & (~dec_special_lsu_d | dec_lsu_load_d)}} & i0_rs1_bypass_data_d[31:0] ) |
+                                    ({32{                       dec_extint_stall                   & dec_qual_lsu_d                                        }} & {dec_tlu_meihap[31:2],2'b0}) |
+                                    ({32{                    & ~dec_extint_stall                   & dec_qual_lsu_d &  (dec_special_lsu_d & ~dec_lsu_load_d)}} & last_special_lsu_rs1[31:0] );
 
   assign exu_lsu_rs2_d[31:0]      = ({32{~i0_rs2_bypass_en_d & ~dec_extint_stall & dec_i0_rs2_en_d & dec_qual_lsu_d & ~dec_special_lsu_d}} & gpr_i0_rs2_d[31:0]        ) |
                                     ({32{ i0_rs2_bypass_en_d & ~dec_extint_stall                   & dec_qual_lsu_d                     }} & i0_rs2_bypass_data_d[31:0]) |
