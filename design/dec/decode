@@ -686,7 +686,7 @@ rv32i[fcvt.s.w] =  { fpu         rd rs1         f_i2f               }
 rv32i[fcvt.s.wu] = { fpu         rd rs1         f_i2f      f_op_mod }
 rv32i[fclass.s] =  { fpu         rd rs1         f_classify          }
 
-rv32i[lw.special]  =     {     lsu load  rd rs1                  word special }
+rv32i[lw.special]  = {     lsu load  rd rs1                  word special }
 rv32i[fnmsub.s.sw] = { fpu lsu store rd rs1 rs2 rs3 f_fnmsub word special }
 rv32i[fmul.s.sw]   = { fpu lsu store rd rs1 rs2     f_mul    word special }
 

@@ -149,6 +149,7 @@ module el2_dec_decode_ctl
     output el2_lsu_pkt_t lsu_p,          // load/store packet
     output logic         dec_qual_lsu_d, // LSU instruction at D.  Use to quiet LSU operands
     output logic         dec_special_lsu_d,
+    output logic         dec_lsu_load_d,
 
     output el2_mul_pkt_t mul_p,  // multiply packet
 
@@ -906,7 +907,7 @@ else begin
   // lsu stuff
   // load/store mutually exclusive
   assign dec_lsu_offset_d[11:0] = ({12{ ~dec_extint_stall & i0_dp.lsu & i0_dp.store &  i0_dp.special}} & last_special_load_offset[11:0]  ) |
-                                  ({12{ ~dec_extint_stall & i0_dp.lsu & i0_dp.load  & ~i0_dp.special}} &              i0[31:20]          ) |
+                                  ({12{ ~dec_extint_stall & i0_dp.lsu & i0_dp.load                  }} &              i0[31:20]          ) |
                                   ({12{ ~dec_extint_stall & i0_dp.lsu & i0_dp.store & ~i0_dp.special}} &             {i0[31:25],i0[11:7]});
 
 
@@ -1312,6 +1313,7 @@ else begin
 
   assign dec_qual_lsu_d    = i0_dp.lsu;
   assign dec_special_lsu_d = i0_dp.special;
+  assign dec_lsu_load_d    = i0_dp.load;
 
 
 
@@ -1348,7 +1350,7 @@ else begin
                                (i0_rs2_class_d.load & i0_rs2_depth_d[0] & ~i0_dp.store) |
                                (i0_rs3_class_d.load & i0_rs3_depth_d[0]);
 
-    assign load_ldst_bypass_d    =  (i0_dp.load | i0_dp.store) & i0_rs1_depth_d[1] & i0_rs1_class_d.load & ~i0_dp.fpu;
+    assign load_ldst_bypass_d    =  (i0_dp.load | (i0_dp.store & ~i0_dp.fpu)) & i0_rs1_depth_d[1] & i0_rs1_class_d.load;
 
     assign store_data_bypass_d = i0_dp.store & i0_rs2_depth_d[1] & i0_rs2_class_d.load & ~i0_dp.fpu;
 
@@ -1357,7 +1359,7 @@ else begin
 
     assign i0_load_block_d = 1'b0;
 
-    assign load_ldst_bypass_d    =  (i0_dp.load | i0_dp.store) & i0_rs1_depth_d[0] & i0_rs1_class_d.load & ~i0_dp.fpu;
+    assign load_ldst_bypass_d    =  (i0_dp.load | (i0_dp.store & ~i0_dp.fpu)) & i0_rs1_depth_d[0] & i0_rs1_class_d.load;
 
     assign store_data_bypass_d = i0_dp.store & i0_rs2_depth_d[0] & i0_rs2_class_d.load & ~i0_dp.fpu;
 

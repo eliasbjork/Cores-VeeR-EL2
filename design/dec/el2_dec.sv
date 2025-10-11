@@ -258,6 +258,7 @@ module el2_dec
     output el2_lsu_pkt_t lsu_p,              // lsu packet
     output logic         dec_qual_lsu_d,     // LSU instruction at D.  Use to quiet LSU operands
     output logic         dec_special_lsu_d,  // LSU special instruction at D. Used for setting or selecting the stored adress-values. 
+    output logic         dec_lsu_load_d,     // Is load?
     output el2_mul_pkt_t mul_p,              // mul packet
     output el2_div_pkt_t div_p,              // div packet
     output logic         dec_div_cancel,     // cancel divide operation

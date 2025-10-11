@@ -674,6 +674,7 @@ import el2_pkg::*;
    el2_lsu_pkt_t    lsu_p;
    logic             dec_qual_lsu_d;
    logic             dec_special_lsu_d;
+   logic             dec_lsu_load_d;
 
    logic        dec_lsu_valid_raw_d;
    logic [11:0] dec_lsu_offset_d;

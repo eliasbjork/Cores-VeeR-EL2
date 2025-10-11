@@ -61,6 +61,7 @@ module el2_exu
 
     input logic         dec_qual_lsu_d,  // LSU instruction at D.  Use to quiet LSU operands
     input logic         dec_special_lsu_d,
+    input logic         dec_lsu_load_d,
     input el2_mul_pkt_t mul_p,           // DEC {valid, operand signs, low, operand bypass}
     input el2_div_pkt_t div_p,           // DEC {valid, unsigned, rem}
     input logic         dec_div_cancel,  // Cancel the divide operation
@@ -270,7 +271,7 @@ module el2_exu
   rvdffe #(32) lsu_special_rs1_ff (
       .*,
       .clk (clk),
-      .en  (dec_qual_lsu_d & dec_special_lsu_d),
+      .en  (dec_qual_lsu_d & dec_special_lsu_d & dec_lsu_load_d),
       .din (exu_lsu_rs1_d[31:0]),
       .dout(last_special_lsu_rs1[31:0])
   );
@@ -315,10 +316,10 @@ module el2_exu
                                      ({32{ i0_rs3_bypass_en_d                  }}                                      & i0_rs3_bypass_data_d[31:0]);
 
 
-  assign exu_lsu_rs1_d[31:0]      = ({32{~i0_rs1_bypass_en_d & ~dec_extint_stall & dec_i0_rs1_en_d & dec_qual_lsu_d & ~dec_special_lsu_d}} & gpr_i0_rs1_d[31:0]         ) |
-                                    ({32{ i0_rs1_bypass_en_d & ~dec_extint_stall                   & dec_qual_lsu_d & ~dec_special_lsu_d}} & i0_rs1_bypass_data_d[31:0] ) |
+  assign exu_lsu_rs1_d[31:0]      = ({32{~i0_rs1_bypass_en_d & ~dec_extint_stall & dec_i0_rs1_en_d & dec_qual_lsu_d & (~dec_special_lsu_d & ~dec_lsu_load_d)}} & gpr_i0_rs1_d[31:0]         ) |
+                                    ({32{ i0_rs1_bypass_en_d & ~dec_extint_stall                   & dec_qual_lsu_d & (~dec_special_lsu_d & ~dec_lsu_load_d)}} & i0_rs1_bypass_data_d[31:0] ) |
                                     ({32{                       dec_extint_stall                   & dec_qual_lsu_d                     }} & {dec_tlu_meihap[31:2],2'b0}) |
-                                    ({32{                    & ~dec_extint_stall                   & dec_qual_lsu_d &  dec_special_lsu_d}} & last_special_lsu_rs1[31:0] );
+                                    ({32{                    & ~dec_extint_stall                   & dec_qual_lsu_d &  (dec_special_lsu_d & dec_lsu_load_d)}} & last_special_lsu_rs1[31:0] );
 
   assign exu_lsu_rs2_d[31:0]      = ({32{~i0_rs2_bypass_en_d & ~dec_extint_stall & dec_i0_rs2_en_d & dec_qual_lsu_d & ~dec_special_lsu_d}} & gpr_i0_rs2_d[31:0]        ) |
                                     ({32{ i0_rs2_bypass_en_d & ~dec_extint_stall                   & dec_qual_lsu_d                     }} & i0_rs2_bypass_data_d[31:0]) |
