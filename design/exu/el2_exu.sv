@@ -60,6 +60,7 @@ module el2_exu
     input logic [31:0] dec_csr_rddata_d,  // CSR read data
 
     input logic         dec_qual_lsu_d,  // LSU instruction at D.  Use to quiet LSU operands
+    input logic         dec_special_lsu_d,
     input el2_mul_pkt_t mul_p,           // DEC {valid, operand signs, low, operand bypass}
     input el2_div_pkt_t div_p,           // DEC {valid, unsigned, rem}
     input logic         dec_div_cancel,  // Cancel the divide operation
@@ -128,6 +129,7 @@ module el2_exu
   logic        i0_rs3_bypass_en_d;
   logic [31:0] i0_rs1_d, i0_rs2_d, i0_rs3_d;
   logic [31:0] muldiv_rs1_d;
+  logic [31:0] last_special_lsu_rs1;
   logic [31:1] pred_correct_npc_r;
   logic        i0_pred_correct_upper_r;
   logic [31:1] i0_flush_path_upper_r;
@@ -265,6 +267,15 @@ module el2_exu
   );
 
 
+  rvdffe #(32) lsu_special_rs1_ff (
+      .*,
+      .clk (clk),
+      .en  (dec_qual_lsu_d & dec_special_lsu_d),
+      .din (exu_lsu_rs1_d[31:0]),
+      .dout(last_special_lsu_rs1[31:0])
+  );
+
+
 
   assign fpu_valid_x_in = fpu_p.valid & ~fpu_p.fpu_div;
 
@@ -304,16 +315,20 @@ module el2_exu
                                      ({32{ i0_rs3_bypass_en_d                  }}                                      & i0_rs3_bypass_data_d[31:0]);
 
 
-  assign exu_lsu_rs1_d[31:0]      = ({32{~i0_rs1_bypass_en_d & ~dec_extint_stall & dec_i0_rs1_en_d & dec_qual_lsu_d}} & gpr_i0_rs1_d[31:0]        ) |
-                                     ({32{ i0_rs1_bypass_en_d & ~dec_extint_stall                   & dec_qual_lsu_d}} & i0_rs1_bypass_data_d[31:0]) |
-                                     ({32{                       dec_extint_stall                   & dec_qual_lsu_d}} & {dec_tlu_meihap[31:2],2'b0});
+  assign exu_lsu_rs1_d[31:0]      = ({32{~i0_rs1_bypass_en_d & ~dec_extint_stall & dec_i0_rs1_en_d & dec_qual_lsu_d & ~dec_special_lsu_d}} & gpr_i0_rs1_d[31:0]         ) |
+                                    ({32{ i0_rs1_bypass_en_d & ~dec_extint_stall                   & dec_qual_lsu_d & ~dec_special_lsu_d}} & i0_rs1_bypass_data_d[31:0] ) |
+                                    ({32{                       dec_extint_stall                   & dec_qual_lsu_d &                   }} & {dec_tlu_meihap[31:2],2'b0}) |
+                                    ({32{                    & ~dec_extint_stall                   & dec_qual_lsu_d &  dec_special_lsu_d}} & last_special_lsu_rs1[31:0] );
 
-  assign exu_lsu_rs2_d[31:0]      = ({32{~i0_rs2_bypass_en_d & ~dec_extint_stall & dec_i0_rs2_en_d & dec_qual_lsu_d}} & gpr_i0_rs2_d[31:0]        ) |
-                                     ({32{ i0_rs2_bypass_en_d & ~dec_extint_stall                   & dec_qual_lsu_d}} & i0_rs2_bypass_data_d[31:0]);
+  assign exu_lsu_rs2_d[31:0]      = ({32{~i0_rs2_bypass_en_d & ~dec_extint_stall & dec_i0_rs2_en_d & dec_qual_lsu_d & ~dec_special_lsu_d}} & gpr_i0_rs2_d[31:0]        ) |
+                                    ({32{ i0_rs2_bypass_en_d & ~dec_extint_stall                   & dec_qual_lsu_d &                   }} & i0_rs2_bypass_data_d[31:0]) |
+                                    ({32{                    & ~dec_extint_stall                   & dec_qual_lsu_d &  dec_special_lsu_d}} & fpu_direct_result[31:0]   );
 
 
   assign muldiv_rs1_d[31:0]       = ({32{~i0_rs1_bypass_en_d & dec_i0_rs1_en_d}}                                      & gpr_i0_rs1_d[31:0]        ) |
-                                     ({32{ i0_rs1_bypass_en_d                  }}                                      & i0_rs1_bypass_data_d[31:0]);
+                                    ({32{ i0_rs1_bypass_en_d                  }}                                      & i0_rs1_bypass_data_d[31:0]);
+
+
 
 
   assign x_data_en = dec_data_en[1];

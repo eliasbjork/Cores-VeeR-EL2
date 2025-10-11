@@ -323,7 +323,7 @@ typedef struct packed {
                        logic f_cpkcd;
                        logic f_adds;
                        logic f_op_mod;
-                       logic f_cisc_op;
+                       logic special;
                        } el2_dec_pkt_t;
 
 
