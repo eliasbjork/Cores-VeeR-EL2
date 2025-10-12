@@ -7,9 +7,6 @@
 [submodule "third_party/cocotb"]
 	path = third_party/cocotb
 	url = https://github.com/cocotb/cocotb
-[submodule "design/fpu_pivot_accelerator"]
-	path = design/fpu_pivot_accelerator
-	url = git@github.com:MaxSailor/fpu_pivot_accelerator.git
 [submodule "design/cvfpu"]
 	path = design/cvfpu
 	url = git@github.com:openhwgroup/cvfpu.git
