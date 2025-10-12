@@ -20,6 +20,7 @@ import el2_pkg::*;
  )  (
     input logic [4:0]  raddr0,       // logical read addresses
     input logic [4:0]  raddr1,
+    input logic [4:0]  raddr2,       // for fused instrs
 
     input logic        wen0,         // write enable
     input logic [4:0]  waddr0,       // write address
@@ -33,11 +34,16 @@ import el2_pkg::*;
     input logic [4:0]  waddr2,       // write address
     input logic [31:0] wd2,          // write data
 
+    input logic        wen3,         // write enable acc
+    input logic [4:0]  waddr3,       // write address acc
+    input logic [31:0] wd3,          // write data acc
+
     input logic        clk,
     input logic        rst_l,
 
     output logic [31:0] rd0,         // read data
     output logic [31:0] rd1,
+    output logic [31:0] rd2,         // read data
 
 `ifdef RV_LOCKSTEP_REGFILE_ENABLE
     el2_regfile_if.veer_gpr_rf regfile,
@@ -51,7 +57,7 @@ import el2_pkg::*;
 
    logic [31:1] [31:0] gpr_out;      // 31 x 32 bit GPRs
    logic [31:1] [31:0] gpr_in;
-   logic [31:1] w0v,w1v,w2v;
+   logic [31:1] w0v,w1v,w2v,w3v;
    logic [31:1] gpr_wr_en;
 
 `ifdef RV_LOCKSTEP_REGFILE_ENABLE
@@ -69,7 +75,7 @@ import el2_pkg::*;
 `endif
 
    // GPR Write Enables
-   assign gpr_wr_en[31:1] = (w0v[31:1] | w1v[31:1] | w2v[31:1]);
+   assign gpr_wr_en[31:1] = (w0v[31:1] | w1v[31:1] | w2v[31:1] | w3v[31:1]);
    for ( genvar j=1; j<32; j++ )  begin : gpr
       rvdffe #(32) gprff (.*, .en(gpr_wr_en[j]), .din(gpr_in[j][31:0]), .dout(gpr_out[j][31:0]));
    end : gpr
@@ -78,15 +84,18 @@ import el2_pkg::*;
    always_comb begin
       rd0[31:0] = 32'b0;
       rd1[31:0] = 32'b0;
+      rd2[31:0] = 32'b0;
       w0v[31:1] = 31'b0;
       w1v[31:1] = 31'b0;
       w2v[31:1] = 31'b0;
+      w3v[31:1] = 31'b0;
       gpr_in[31:1] = '0;
 
       // GPR Read logic
       for (int j=1; j<32; j++ )  begin
          rd0[31:0] |= ({32{(raddr0[4:0]== 5'(j))}} & gpr_out[j][31:0]);
          rd1[31:0] |= ({32{(raddr1[4:0]== 5'(j))}} & gpr_out[j][31:0]);
+         rd2[31:0] |= ({32{(raddr2[4:0]== 5'(j))}} & gpr_out[j][31:0]);
       end
 
      // GPR Write logic
@@ -94,9 +103,11 @@ import el2_pkg::*;
          w0v[j]     = wen0  & (waddr0[4:0]== 5'(j) );
          w1v[j]     = wen1  & (waddr1[4:0]== 5'(j) );
          w2v[j]     = wen2  & (waddr2[4:0]== 5'(j) );
+         w3v[j]     = wen3  & (waddr3[4:0]== 5'(j) );
          gpr_in[j]  =    ({32{w0v[j]}} & wd0[31:0]) |
                          ({32{w1v[j]}} & wd1[31:0]) |
-                         ({32{w2v[j]}} & wd2[31:0]);
+                         ({32{w2v[j]}} & wd2[31:0]) |
+                         ({32{w3v[j]}} & wd3[31:0]);
      end
    end // always_comb begin
 
@@ -105,7 +116,10 @@ import el2_pkg::*;
    logic  write_collision_unused;
    assign write_collision_unused = ( (w0v[31:1] == w1v[31:1]) & wen0 & wen1 ) |
                                    ( (w0v[31:1] == w2v[31:1]) & wen0 & wen2 ) |
-                                   ( (w1v[31:1] == w2v[31:1]) & wen1 & wen2 );
+                                   ( (w0v[31:1] == w3v[31:1]) & wen0 & wen3 ) |
+                                   ( (w1v[31:1] == w2v[31:1]) & wen1 & wen2 ) |
+                                   ( (w1v[31:1] == w3v[31:1]) & wen1 & wen3 ) |
+                                   ( (w2v[31:1] == w3v[31:1]) & wen2 & wen3 );
 
 
    // asserting that no 2 ports will write to the same gpr simultaneously

@@ -151,6 +151,7 @@ import el2_pkg::*;
    input  logic ifu_miss_state_idle, // I-side miss buffer empty
    input  logic lsu_idle_any, // lsu is idle
    input  logic dec_div_active, // oop div is active
+   input  logic dec_fpu_div_active, //same but for fpu
    output el2_trigger_pkt_t  [3:0] trigger_pkt_any, // trigger info for trigger blocks
 
    input logic  ifu_ic_error_start,     // IC single bit error
@@ -1049,7 +1050,7 @@ localparam MSECCFG_MML   = 0;
    // After doing halt flush (RFNPC) wait until core is idle before asserting a particular halt mode
    // It takes a cycle for mb_empty to assert after a fetch, take_halt covers that cycle
    assign core_empty = force_halt |
-                       (lsu_idle_any & lsu_idle_any_f & ifu_miss_state_idle & ifu_miss_state_idle_f & ~debug_halt_req & ~debug_halt_req_d1 & ~dec_div_active);
+                       (lsu_idle_any & lsu_idle_any_f & ifu_miss_state_idle & ifu_miss_state_idle_f & ~debug_halt_req & ~debug_halt_req_d1 & ~dec_div_active & ~dec_fpu_div_active);
 
    assign dec_tlu_core_empty = core_empty;
 

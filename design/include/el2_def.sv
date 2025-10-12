@@ -104,6 +104,8 @@ typedef struct packed {
 typedef struct packed {
                        // unlikely to change
                        logic i0div;
+                       logic i0fp;
+                       logic i0fpu_div;
                        logic csrwen;
                        logic csrwonly;
                        logic [11:0] csraddr;
@@ -119,11 +121,13 @@ typedef struct packed {
                        logic mul;
                        logic load;
                        logic alu;
+                       logic fpu;
                        } el2_class_pkt_t;
 
 typedef struct packed {
                        logic [4:0] rs1;
                        logic [4:0] rs2;
+                       logic [4:0] rs3;
                        logic [4:0] rd;
                        } el2_reg_pkt_t;
 
@@ -252,6 +256,7 @@ typedef struct packed {
                        logic alu;
                        logic rs1;
                        logic rs2;
+                       logic rs3;
                        logic imm12;
                        logic rd;
                        logic shimm5;
@@ -299,6 +304,26 @@ typedef struct packed {
                        logic fence_i;
                        logic pm_alu;
                        logic legal;
+                       logic fpu;
+                       logic fpu_div;
+                       logic f_fmadd;
+                       logic f_fnmsub;
+                       logic f_add;
+                       logic f_mul;
+                       logic f_div;
+                       logic f_sqrt;
+                       logic f_sgnj;
+                       logic f_minmax;
+                       logic f_cmp;
+                       logic f_classify;
+                       logic f_f2f;
+                       logic f_f2i;
+                       logic f_i2f;
+                       logic f_cpkab;
+                       logic f_cpkcd;
+                       logic f_adds;
+                       logic f_op_mod;
+                       logic special;
                        } el2_dec_pkt_t;
 
 
@@ -358,6 +383,31 @@ typedef struct packed {
                        logic        BC1;
                        logic        BC2;
                       } el2_dccm_ext_in_pkt_t;
+
+
+typedef struct packed {
+                      logic        valid;
+                      logic        fpu_div;
+                      logic [2:0]  rm;
+                      logic        fmadd;
+                      logic        fnmsub;
+                      logic        add;
+                      logic        mul;
+                      logic        div;
+                      logic        sqrt;
+                      logic        sgnj;
+                      logic        minmax;
+                      logic        cmp;
+                      logic        classify;
+                      logic        f2f;
+                      logic        f2i;
+                      logic        i2f;
+                      logic        cpkab;
+                      logic        cpkcd;
+                      logic        adds;
+                      logic        op_mod;
+                      logic        cisc_op;
+                      } el2_fpu_pkt_t;
 
 
 typedef struct packed {

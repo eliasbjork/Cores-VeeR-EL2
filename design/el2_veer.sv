@@ -626,8 +626,10 @@ import el2_pkg::*;
 
    logic         dec_i0_rs1_en_d;
    logic         dec_i0_rs2_en_d;
+   logic         dec_i0_rs3_en_d;
    logic  [31:0] gpr_i0_rs1_d;
    logic  [31:0] gpr_i0_rs2_d;
+   logic  [31:0] gpr_i0_rs3_d;  // Zfinx R4 third source
 
    logic [31:0] dec_i0_result_r;
    logic [31:0] exu_i0_result_x;
@@ -648,6 +650,7 @@ import el2_pkg::*;
    logic [31:1] dec_i0_pc_d;
    logic [3:0]  dec_i0_rs1_bypass_en_d;
    logic [3:0]  dec_i0_rs2_bypass_en_d;
+   logic [3:0]  dec_i0_rs3_bypass_en_d;
 
    logic         dec_i0_alu_decode_d;
    logic         dec_i0_branch_d;
@@ -670,6 +673,8 @@ import el2_pkg::*;
 
    el2_lsu_pkt_t    lsu_p;
    logic             dec_qual_lsu_d;
+   logic             dec_special_lsu_d;
+   logic             dec_lsu_load_d;
 
    logic        dec_lsu_valid_raw_d;
    logic [11:0] dec_lsu_offset_d;
@@ -722,6 +727,12 @@ import el2_pkg::*;
 
    logic [31:0] exu_div_result;
    logic exu_div_wren;
+
+   el2_fpu_pkt_t  fpu_p;
+   logic         dec_fpu_div_cancel;
+
+   logic [31:0] exu_fpu_div_result;
+   logic exu_fpu_div_wren;
 
    logic dec_i0_decode_d;
 

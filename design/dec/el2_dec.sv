@@ -150,6 +150,9 @@ module el2_dec
     input logic [31:0] exu_div_result,  // final div result
     input logic        exu_div_wren,    // Divide write enable to GPR
 
+    input logic [31:0] exu_fpu_div_result,  // final fpu_div result
+    input logic        exu_fpu_div_wren,    // fpu_divide write enable to GPR
+
     input logic [31:0] exu_csr_rs1_x,  // rs1 for csr instruction
 
     input logic [31:0] lsu_result_m,      // load result
@@ -230,8 +233,10 @@ module el2_dec
 
     output logic        dec_i0_rs1_en_d,  // Qualify GPR RS1 data
     output logic        dec_i0_rs2_en_d,  // Qualify GPR RS2 data
+    output logic        dec_i0_rs3_en_d,  // Qualify GPR RS3 data
     output logic [31:0] gpr_i0_rs1_d,     // gpr rs1 data
     output logic [31:0] gpr_i0_rs2_d,     // gpr rs2 data
+    output logic [31:0] gpr_i0_rs3_d,     // gpr rs3 data (Zfinx R4)
 
     output logic [31:0] dec_i0_immed_d,    // immediate data
     output logic [12:1] dec_i0_br_immed_d, // br immediate data
@@ -246,19 +251,24 @@ module el2_dec
     output logic [31:1] dec_i0_pc_d,             // pc's at decode
     output logic [ 3:0] dec_i0_rs1_bypass_en_d,  // rs1 bypass enable
     output logic [ 3:0] dec_i0_rs2_bypass_en_d,  // rs2 bypass enable
+    output logic [ 3:0] dec_i0_rs3_bypass_en_d,  // rs3 bypass enable
 
     output logic [31:0] dec_i0_result_r,  // Result R-stage
 
-    output el2_lsu_pkt_t lsu_p,           // lsu packet
-    output logic         dec_qual_lsu_d,  // LSU instruction at D.  Use to quiet LSU operands
-    output el2_mul_pkt_t mul_p,           // mul packet
-    output el2_div_pkt_t div_p,           // div packet
-    output logic         dec_div_cancel,  // cancel divide operation
+    output el2_lsu_pkt_t lsu_p,              // lsu packet
+    output logic         dec_qual_lsu_d,     // LSU instruction at D.  Use to quiet LSU operands
+    output logic         dec_special_lsu_d,  // LSU special instruction at D. Used for setting or selecting the stored adress-values. 
+    output logic         dec_lsu_load_d,     // Is load?
+    output el2_mul_pkt_t mul_p,              // mul packet
+    output el2_div_pkt_t div_p,              // div packet
+    output logic         dec_div_cancel,     // cancel divide operation
+    output el2_fpu_pkt_t  fpu_p,              // fpu packet
+    output logic         dec_fpu_div_cancel,  // cancel fpu divide operation
 
     output logic [11:0] dec_lsu_offset_d,  // 12b offset for load/store addresses
 
     output logic        dec_csr_ren_d,    // CSR read enable
-    output logic [31:0] dec_csr_rddata_d, // CSR read data
+  output logic [31:0] dec_csr_rddata_d, // CSR read data
 
     output logic dec_tlu_flush_lower_r,  // tlu flush due to late mp, exception, rfpc, or int
     output logic dec_tlu_flush_lower_wb,
@@ -292,6 +302,7 @@ module el2_dec
     input logic [15:0] ifu_i0_cinst,  // 16b compressed instruction
 
     output el2_trace_pkt_t trace_rv_trace_pkt,  // trace packet
+
 
     // PMP signals
     output el2_pmp_cfg_pkt_t        pmp_pmpcfg [pt.PMP_ENTRIES],
@@ -354,6 +365,7 @@ module el2_dec
 
   logic [4:0] dec_i0_rs1_d;
   logic [4:0] dec_i0_rs2_d;
+  logic [4:0] dec_i0_rs3_d;
 
   logic [31:0] dec_i0_instr_d;
 
@@ -418,7 +430,9 @@ module el2_dec
   logic        dec_tlu_i0_exc_valid_wb1;
 
   logic [ 4:0] div_waddr_wb;
+  logic [ 4:0] fpu_div_waddr_wb;
   logic        dec_div_active;
+  logic        dec_fpu_div_active;
 
   logic        dec_debug_valid_d;
 
@@ -482,6 +496,7 @@ module el2_dec
       // inputs
       .raddr0(dec_i0_rs1_d[4:0]),
       .raddr1(dec_i0_rs2_d[4:0]),
+      .raddr2(dec_i0_rs3_d[4:0]),
 
       .wen0(dec_i0_wen_r),
       .waddr0(dec_i0_waddr_r[4:0]),
@@ -492,10 +507,15 @@ module el2_dec
       .wen2(exu_div_wren),
       .waddr2(div_waddr_wb),
       .wd2(exu_div_result[31:0]),
+      // optional 3rd write port for accelerator/FPU
+      .wen3(exu_fpu_div_wren),
+      .waddr3(fpu_div_waddr_wb),
+      .wd3(exu_fpu_div_result[31:0]),
 
       // outputs
       .rd0(gpr_i0_rs1_d[31:0]),
-      .rd1(gpr_i0_rs2_d[31:0])
+      .rd1(gpr_i0_rs2_d[31:0]),
+      .rd2(gpr_i0_rs3_d[31:0])
   );
 
 
