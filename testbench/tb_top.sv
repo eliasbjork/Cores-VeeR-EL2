@@ -773,6 +773,26 @@ module tb_top
     logic next_dbus_error;
     logic next_ibus_error;
 
+    integer simplex_input_fd;
+    logic [7:0] read_byte;
+
+    initial begin
+        lmem_axi_wdata_switch = 0;
+
+        simplex_input_fd = $fopen("testbench/simplex-tests/4/8/20008/i", "r");
+
+        for (;;) begin
+            if (mailbox_write && (mailbox_data[7:0] == 8'hf0)) begin
+                if ($feof(simplex_input_fd)) begin
+                    $fclose(simplex_input_fd);
+                end
+
+                read_byte = $fgetc(simplex_input_fd);
+            end
+            @(negedge core_clk);
+        end
+    end
+
     always @(negedge core_clk or negedge rst_l) begin
         if (rst_l == 0) begin
             error_injection_mode <= '0;
@@ -868,10 +888,13 @@ module tb_top
                 error_injection_mode <= '0;
             end
 
-            // getch interface (el2 sends 0xf0 to wait for data)
+            // getch interface (el2 sends 0xf0 to await data)
             if(mailbox_write && (mailbox_data[7:0] == 8'hf0)) begin
                 lmem_axi_wdata_switch <= 1;
-                lmem_axi_wdata_from_tb <= 8'h53; // TODO: unhardcode. Right now S
+                lmem_axi_wdata_from_tb <= read_byte;
+            end
+            else begin
+                lmem_axi_wdata_switch <= 0;
             end
 
             // Memory signature dump
