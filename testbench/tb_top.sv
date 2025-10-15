@@ -192,6 +192,10 @@ module tb_top
     logic                       mailbox_write;
     logic        [63:0]         mailbox_data;
 
+    /* used to write from tb to memory */
+    logic [63:0]                lmem_axi_wdata_from_tb;
+    logic                       lmem_axi_wdata_switch;
+
     logic        [63:0]         dma_hrdata       ;
     logic        [63:0]         dma_hwdata       ;
     logic                       dma_hready       ;
@@ -734,7 +738,7 @@ module tb_top
    assign mux_axi_aruser = lsu_axi_aruser;
    assign lsu_axi_ruser = mux_axi_ruser;
    assign mux_axi_awsize = lsu_axi_awsize;
-   assign mux_axi_wdata = lsu_axi_wdata;
+   assign mux_axi_wdata = lmem_axi_wdata_switch? lmem_axi_wdata_from_tb : lsu_axi_wdata;
    assign mux_axi_wstrb = lsu_axi_wstrb;
    assign mux_axi_wvalid = lsu_axi_wvalid;
    assign lsu_axi_wready = mux_axi_wready;
@@ -761,7 +765,7 @@ module tb_top
 
     // `lmem` is an instance of AXI memory even if VeeR uses AHB.
     assign mailbox_write = lmem.awvalid && lmem.awaddr == mem_mailbox && rst_l;
-    assign mailbox_data  = lmem.wdata;
+    assign mailbox_data  = lsu_axi_wdata;
 
     assign mailbox_data_val = mailbox_data[7:0] > 8'h5 && mailbox_data[7:0] < 8'h7f;
 
@@ -863,6 +867,13 @@ module tb_top
                 $display("Disable ECC error injection");
                 error_injection_mode <= '0;
             end
+
+            // getch interface (el2 sends 0xf0 to wait for data)
+            if(mailbox_write && (mailbox_data[7:0] == 8'hf0)) begin
+                lmem_axi_wdata_switch <= 1;
+                lmem_axi_wdata_from_tb <= 8'h53; // TODO: unhardcode. Right now S
+            end
+
             // Memory signature dump
             if(mailbox_write && (mailbox_data[7:0] == 8'hFF || mailbox_data[7:0] == 8'h01)) begin
                 if (mem_signature_begin < mem_signature_end) begin
