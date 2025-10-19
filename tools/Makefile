@@ -29,7 +29,10 @@ TEST_CFLAGS = -g -gdwarf -O3 -funroll-all-loops
 ABI = -mabi=ilp32
 LD_ABI = $(ABI) -march=rv32imac
 
-TB_EXTRA_ARGS ?= --test-halt
+SIMPLEX_TESTCASE ?= testbench/simplex-tests/4/8/20008/i
+
+TB_EXTRA_ARGS ?= --test-halt +FILE=$(SIMPLEX_TESTCASE)
+
 
 # Check for RV_ROOT
 ifeq (,$(wildcard ${RV_ROOT}/configs/veer.config))

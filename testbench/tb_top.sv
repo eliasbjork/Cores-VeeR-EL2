@@ -776,10 +776,20 @@ module tb_top
     integer simplex_input_fd;
     logic [7:0] read_byte;
 
+    string testfilepath;
+
     initial begin
+
+        integer got_file = $value$plusargs("FILE=%s", testfilepath);
+
+        if (!got_file) begin
+            $display("ERROR: No +FILE=<path> argument provided!");
+            $finish;
+        end
+
         lmem_axi_wdata_switch = 0;
 
-        simplex_input_fd = $fopen("testbench/simplex-tests/4/8/20008/i", "r");
+        simplex_input_fd = $fopen(testfilepath, "r");
 
         for (;;) begin
             if (mailbox_write && (mailbox_data[7:0] == 8'hf0)) begin
